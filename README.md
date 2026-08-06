@@ -32,6 +32,7 @@ Whether that trade is worth making is the question the staged plan in §9 exists
 - [2. Data feeds](#2-data-feeds)
 - [3. The hard problem: backtesting sentiment honestly](#3-the-hard-problem-backtesting-sentiment-honestly)
 - [4. Signal extraction](#4-signal-extraction)
+- [4a. Running it locally — hardware requirements](#4a-running-it-locally--hardware-requirements)
 - [5. Execution architecture](#5-execution-architecture)
 - [6. Latency](#6-latency)
 - [7. Cost optimisation](#7-cost-optimisation)
@@ -276,6 +277,167 @@ A sensible progression:
 
 Store the raw document text alongside every score. Re-scoring an archive with a better model
 later is cheap; re-acquiring documents you did not keep is impossible.
+
+---
+
+## 4a. Running it locally — hardware requirements
+
+§4 recommends pinning a local model for the research loop. This section works out what that
+actually demands in hardware, anchored to the machine this research would run on.
+
+The conclusion up front: **for the design §4 recommends, local is not a compromise — it is the
+better instrument, and the hardware requirement is trivial.** Sentiment scoring is a
+*classification* task, not open-ended generation, and the models best suited to it are among the
+smallest available. The 4 GB VRAM ceiling below only binds if you insist on a generative LLM,
+which §4 already argues against for the bulk of the work.
+
+### The machine
+
+| Component | Spec | Bearing on this |
+|---|---|---|
+| GPU | NVIDIA GeForce RTX 3050 Laptop, **4 GB VRAM**, CUDA-capable | **The binding constraint.** Everything below is sized against it |
+| Integrated GPU | AMD Radeon, 2 GB shared | Ignore it. ROCm on Windows is not worth the setup cost for this workload |
+| CPU | AMD Ryzen 7 6800HS, 8 cores and 16 threads | Ample. The lexicon and encoder paths run acceptably here with no GPU at all |
+| RAM | 13.7 GB total, assume 8–9 GB usable after Windows | Enough for CPU inference on small models; not enough to comfortably offload a large one |
+| Disk | ~650 GB free | Storage is a non-issue. See the archive sizing below |
+| OS | Windows 11 | Rules out some Linux-first serving stacks. See the serving table |
+
+Usable VRAM is lower than the sticker figure — the display driver and desktop compositor hold
+several hundred MB before you load anything. **Budget for roughly 3.5 GB, not 4 GB.**
+
+### What fits in 4 GB
+
+The arithmetic matters more than any specific model name, because it transfers to whatever
+hardware you end up on:
+
+```
+VRAM ≈ (params_in_billions × bits_per_weight / 8) + KV cache + ~0.5 GB runtime overhead
+```
+
+Q4_K_M quantisation — the common default for GGUF models — averages roughly **4.5 effective bits
+per weight**, so weights alone cost about **0.56 GB per billion parameters**. The KV cache holds
+the attention state for the current context and grows with context length; at short prompts it is
+a few hundred MB, at long contexts it can reach a gigabyte or more, which is often what actually
+pushes a model over the edge.
+
+| Model size | Weights at Q4_K_M | Realistic total with cache and overhead | Verdict on 4 GB |
+|---|---|---|---|
+| ~1B | ~0.6 GB | ~1.2 GB | Trivial. Runs alongside everything else |
+| ~3B | ~1.7 GB | ~2.4 GB | Comfortable. Room for a long context |
+| ~4B | ~2.3 GB | ~3.0 GB | Fits, but watch context length — this is where the cache starts to bite |
+| ~7B | ~3.9 GB | ~4.6 GB | **Does not fit.** Needs CPU offload, which costs an order of magnitude in speed |
+| ~8B | ~4.5 GB | ~5.2 GB | **Does not fit** |
+| ~14B and up | ~7.9 GB+ | — | Out of reach on this GPU at any usable speed |
+
+So the practical generative ceiling here is the **3B to 4B class**. Note that a model spilling to
+CPU is not merely slower in proportion to how much spilled — throughput collapses, because every
+token now waits on the slowest layer.
+
+### The three scoring approaches on this machine
+
+This is the part that matters. Mapping §4's three families onto the hardware:
+
+| Approach | Size on disk | VRAM needed | Throughput, order of magnitude | Contamination risk |
+|---|---|---|---|---|
+| **Lexicon** — VADER, Loughran–McDonald | A few MB of word lists | **None.** Pure CPU | Tens of thousands of documents per second | **Zero.** No world knowledge exists to leak |
+| **Encoder** — FinBERT class, ~110M params | ~440 MB fp32, ~220 MB fp16 | ~0.5 GB, or none if run on CPU | Hundreds to low thousands of documents per minute on GPU; roughly an order of magnitude slower on CPU | Low and knowable — a pinned checkpoint has a fixed training cutoff |
+| **Local generative LLM** — 3B to 4B class, Q4 | 1.7–2.3 GB | ~2.4–3.0 GB | Tens of tokens per second generated; prompt processing is faster than generation | Depends on the checkpoint's cutoff relative to your test window |
+
+**Throughput figures above are order-of-magnitude estimates, not measurements.** They depend on
+sequence length, batch size, quantisation, and thermal behaviour — a laptop GPU throttles under
+sustained load in a way a desktop does not. Measure on your own machine before planning around any
+of them; the Phase 1 capture period in §9 is the natural time to do it, since you will have real
+documents and no deadline.
+
+**The encoder path is the sweet spot, and it is worth being explicit about why.** A FinBERT-class
+model is around 110M parameters — two orders of magnitude smaller than the generative models the
+4 GB limit excludes. It fits in a fraction of the VRAM with room to spare, and runs acceptably on
+the CPU alone. The model best matched to the task is also the one whose hardware requirement is
+irrelevant on this machine. **The 4 GB ceiling simply does not constrain the design §4 recommends.**
+
+Where a local generative model does earn its place is **structured extraction** rather than
+judgement: pulling named entities, event types, or a constrained JSON verdict out of an article is
+a task where a 3B to 4B model is genuinely useful, because the output space is narrow and
+checkable. Scoring subtle financial tone is the opposite — an open-ended judgement where a small
+local model is a real quality step down from a frontier model. Do not pretend otherwise; use the
+small model where its weaknesses do not bite.
+
+### Serving options on Windows with CUDA
+
+| Option | Best for | Notes |
+|---|---|---|
+| **Ollama** | The default starting point for generative models | One-command install and model pull on Windows, handles GPU offload automatically. Least to go wrong |
+| **llama.cpp** | Maximum control | Choose quantisation precisely, set how many layers go to GPU, tune context. Worth it when you are fighting a 4 GB ceiling |
+| **Hugging Face `transformers`** | FinBERT-class encoders | The natural fit for the recommended path. Pin the revision, not just the model name |
+| **ONNX Runtime** | Fast CPU inference for encoders | Notably quicker than plain PyTorch on CPU. Relevant because the encoder path may not need the GPU at all, which frees it entirely |
+| **vLLM** | High-throughput serving | Linux-oriented and designed for far larger GPUs. **Not appropriate here** — mentioned so it can be ruled out deliberately rather than attempted |
+
+For the recommended stack, `transformers` or ONNX Runtime is all that is required. Ollama only
+enters if you add the optional generative escalation step.
+
+### Storage for the point-in-time archive
+
+§3 makes prospective point-in-time capture the recommendation, which means the archive grows
+indefinitely and must never be pruned. Size it from first principles rather than guessing:
+
+```
+archive size ≈ bytes per document × documents per day × days retained
+```
+
+A news article body is typically a few kB of plain text. As an illustration with stated inputs —
+not a measured volume, since that depends entirely on the feed and universe chosen in §1 and §2 —
+ingesting 1,000 documents per day at 5 kB each accumulates roughly 1.8 GB per year of raw text.
+Text compresses well, often several-fold, and metadata and scores add little.
+
+Against ~650 GB free, storage is a non-issue by orders of magnitude. That has a design
+consequence: **keep everything, in full.** Store the complete raw document text, not a summary or
+an extracted feature vector, and store the documents the relevance gate rejects too (§5).
+Re-scoring an archive with a better model later is cheap; re-acquiring documents you discarded is
+impossible. Disk is the one resource this project has in abundance — spend it.
+
+### A recommended local stack for this machine
+
+Concretely, and mapping onto §9's phases:
+
+1. **Loughran–McDonald lexicon** for the Phase 2 gate. CPU only, no model to download, perfectly
+   deterministic, contamination-proof. If the signal is invisible here, that is a cheap negative
+   result and the project stops — with no GPU involved at any point.
+2. **A pinned FinBERT-class encoder** for the main scoring pass, on GPU or CPU. Record the exact
+   model revision hash alongside every score.
+3. **Optionally, a 3B to 4B local model or a frontier API** on the small ambiguous subset only —
+   documents where the cheap scorers disagree or land near the decision threshold.
+
+This is the same escalation pattern as §7's third cost lever, with one economic consequence worth
+stating plainly. §7 treats LLM inference as a cost driver that scales linearly with document
+volume. **Running the bulk pass locally makes that term zero.** What remains is the data
+subscription, which §7 already identifies as usually the largest line item and which no amount of
+local compute reduces. Local inference does not make this strategy cheap; it removes one of the
+two costs and leaves the bigger one untouched.
+
+### What running locally does not fix
+
+Worth stating explicitly, because "run it locally" can sound like it solves more than it does:
+
+- **The data still costs money.** The model is not the expensive part. A local model changes
+  nothing about the feed subscription, and §7's structural problem — cost scaling with document
+  volume rather than account size — is driven by data, not inference.
+- **Point-in-time integrity is unaffected.** Timestamp drift, revision, and archive survivorship
+  (§3) are properties of the data source. Prospective capture is still the only trustworthy path.
+- **Locality is not what buys reproducibility — pinning is.** A local model pulled by a moving tag
+  can change under you just as a hosted endpoint can. Pin an exact revision, record it with every
+  stored score, and treat a change of revision as a change of methodology requiring a full re-score.
+- **Model contamination still applies.** A local checkpoint has a training cutoff too. It is
+  *knowable*, which is the improvement over a hosted model whose cutoff may be undisclosed and may
+  move — but a local model trained past your test window is contaminated exactly the same way.
+
+### A note on model names
+
+The tiers above are deliberately expressed as parameter counts and capability classes rather than
+specific model names or versions. The local-model landscape moves quickly, and any particular name
+recommended here would date within months. **The VRAM arithmetic and the size tiers are the
+durable part**; substitute whatever the current best model in each class happens to be when you
+build this. The one recommendation that is unlikely to change is the shape of the stack — cheap
+deterministic scorer first, small pinned model for the bulk, expensive model only on the residual.
 
 ---
 
