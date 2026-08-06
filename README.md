@@ -174,6 +174,11 @@ python tests/check_markdown.py      # tables balanced, links resolve, mermaid pa
 
 ## 3. Results
 
+
+Growth of $1 on a log scale, so equal vertical distances are equal percentage moves. Benchmarks are dashed and grey; the out-of-sample period begins at the vertical line.
+
+![Donchian + Aroon equity curve against buy-and-hold SPY, SMH and SOXL](results/charts/eq_donchian_aroon.png)
+
 Backtest period **2012-01-03 → 2026-08-05** (3,668 trading days), signal SMH / traded SOXL,
 5 bps per side, Sharpe at 0% risk-free. In-sample is before 2020-01-01; out-of-sample is
 2020-01-01 onward.
@@ -446,3 +451,27 @@ plausibly select different parameters.
 **Survivorship of the instruments themselves.** SOXL and SMH both existed and remained liquid
 across the whole sample. Leveraged ETFs do get closed after severe drawdowns; that risk is not
 modelled anywhere in these results.
+
+---
+
+## Glossary
+
+Abbreviations used on this page. The repo-wide list, covering every term used anywhere in this project, is in [`GLOSSARY.md`](GLOSSARY.md) — it is available on every branch.
+
+| Term | Definition |
+|---|---|
+| **Sharpe ratio** | Return per unit of volatility (annualised mean daily return / annualised standard deviation), at a 0% risk-free rate. ~1.0 is respectable. |
+| **CAGR** | Compound Annual Growth Rate - the average yearly compounded return. |
+| **Max DD (drawdown)** | Worst peak-to-trough decline. -75% means the account fell to a quarter of its previous high. |
+| **IS / OOS** | In-sample (2012-2019, used for tuning) vs out-of-sample (2020-2026, held back). A large drop from IS to OOS indicates overfitting. |
+| **Vol** | Annualised standard deviation of daily returns - how much the value bounces around. |
+| **bps** | Basis points - hundredths of a percent. 5 bps = 0.05%. |
+| **Exposure** | Share of days actually holding a position rather than sitting in cash. |
+| **Round trip** | One complete buy-then-sell cycle, i.e. two trades. |
+| **SMH / SOXL / SPY** | VanEck Semiconductor ETF (the signal instrument) / Direxion Daily Semiconductor Bull 3x (the traded instrument) / SPDR S&P 500 ETF (the broad-market benchmark). |
+| **B&H** | Buy and hold - the do-nothing benchmark. |
+| **Donchian channel** | The highest and lowest close over the last n bars. A breakout is a close above the upper band; a breakdown is a close below the lower. |
+| **Aroon** | An indicator measuring how recently the highest high and lowest low occurred in a lookback window. AroonUp = 100 means today set the highest price. |
+| **Stateful signal** | A signal that depends on whether you already hold a position, so it can do nothing between an entry and an exit trigger. |
+| **Plateau (in a sweep)** | A broad region of parameter values that all perform similarly. Evidence of a real effect, as opposed to an isolated spike. |
+| **Spearman correlation** | Correlation measured on ranks. Used to ask whether parameters that ranked well in-sample also ranked well out-of-sample. |
