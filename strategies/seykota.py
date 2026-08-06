@@ -14,7 +14,7 @@ ATR is approximated by a close-to-close volatility proxy. The harness uses split
 dividend-adjusted closes, on which a true OHLC range is itself only an approximation,
 and daily-return standard deviation is a faithful stand-in for the risk-sizing purpose.
 
-See STRATEGY.md on the `strategy/seykota` branch for the full write-up.
+Full write-up: the `strategy/seykota` branch (it is that branch's landing page).
 """
 
 from __future__ import annotations

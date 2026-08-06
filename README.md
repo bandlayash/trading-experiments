@@ -16,8 +16,10 @@ code in this repo, so anything you see can be re-run and checked for yourself.
 
 ## The strategies
 
-Each strategy gets its own branch with a full write-up — the strategy, the math, expected
-results, recommended setup, and the research behind it.
+**Each strategy lives on its own branch, and that branch's landing page *is* its write-up.**
+Click any branch below and GitHub renders the full deep-dive immediately — the strategy, the
+math, expected results, recommended setup, the research behind it, and its limitations. There is
+nothing else to go looking for.
 
 | Branch | Strategy | One-line summary |
 |---|---|---|
@@ -31,8 +33,14 @@ The first four are implemented and benchmarked. `strategy/sentiment` is delibera
 rather than code — there are no performance numbers for it anywhere in this repo, because
 nothing has been built or tested.
 
-`main` holds the shared harness, the four implementations, and the head-to-head benchmark.
-The strategy branches add their deep-dive `STRATEGY.md` on top.
+**How the branches are organised.** `main` is the home you are reading now: the shared harness,
+all four implementations, the head-to-head benchmark, and the execution notes. Every strategy
+branch contains all of that too — it is `main` plus one commit — so the code and results are
+identical on every branch. The only difference is the landing page, which each branch replaces
+with its own write-up. So:
+
+- Want to **compare** strategies, run the benchmark, or read the methodology → stay on `main`.
+- Want to **understand one** strategy in depth → open its branch and start reading.
 
 ---
 

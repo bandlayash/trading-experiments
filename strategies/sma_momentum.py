@@ -12,7 +12,7 @@ position on any given day, so it flips in and out whenever price oscillates arou
 moving average. That is the source of its ~4 round trips a year, against ~0.9 for the
 breakout model.
 
-See STRATEGY.md on the `strategy/sma-momentum` branch for the full write-up.
+Full write-up: the `strategy/sma-momentum` branch (it is that branch's landing page).
 """
 
 from __future__ import annotations

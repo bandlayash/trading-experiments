@@ -13,9 +13,10 @@ The two conditions are deliberately redundant-looking but do different jobs. RSI
 price is currently below its short-term anchor. Requiring both avoids buying a market that
 is oversold on momentum but has already begun recovering.
 
-Mean reversion and 3x leverage interact badly, and the results say so plainly -- see
-STRATEGY.md on the `strategy/ema-rsi-meanrev` branch. Adding a losing strategy to the
-comparison is intentional: a benchmark where everything wins is not measuring anything.
+Mean reversion and 3x leverage interact badly, and the results say so plainly -- see the
+`strategy/ema-rsi-meanrev` branch (its landing page) for the full write-up. Adding a losing
+strategy to the comparison is intentional: a benchmark where everything wins is not
+measuring anything.
 """
 
 from __future__ import annotations

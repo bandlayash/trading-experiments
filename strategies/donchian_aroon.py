@@ -11,7 +11,7 @@ The signal is STATEFUL: the buy and sell triggers are independent, and between t
 there is a third state -- do nothing. Once long, the position is held through chop
 until the exit channel actually breaks. That patience is where the return comes from.
 
-See STRATEGY.md on the `strategy/donchian-aroon` branch for the full write-up.
+Full write-up: the `strategy/donchian-aroon` branch (it is that branch's landing page).
 """
 
 from __future__ import annotations
