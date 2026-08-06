@@ -134,6 +134,35 @@ Used on the [`strategy/sentiment`](../../tree/strategy/sentiment) branch.
 
 ---
 
+## Running models locally
+
+Used on the [`strategy/sentiment`](../../tree/strategy/sentiment) and
+[`research/equity-pipeline`](../../tree/research/equity-pipeline) branches.
+
+| Term | Definition |
+|---|---|
+| **VRAM** | Video RAM — memory on the graphics card. This, not the GPU's speed, is what decides whether a model will run at all. |
+| **Parameters** ("params", "7B") | The number of learned weights in a model, usually quoted in billions. Bigger generally means more capable and more memory-hungry. |
+| **Quantisation** | Storing a model's weights at lower numeric precision (say 4 bits instead of 16) to shrink it. Costs a little accuracy and saves a lot of memory. |
+| **GGUF** | A common file format for quantised models that run on CPU or GPU via llama.cpp and tools built on it. |
+| **Q4_K_M** | A widely used 4-bit quantisation setting, roughly 4.5 effective bits per weight — about 0.56 GB of memory per billion parameters. |
+| **KV cache** | Memory holding the model's working state for the current conversation or document. It grows with how much text the model is processing at once, and is easy to forget when budgeting VRAM. |
+| **Context length** | How much text a model can consider at once. Longer context means a larger KV cache and more memory. |
+| **Offloading** | Splitting a model between GPU and system RAM when it does not fit in VRAM. It works, but the part running on the CPU is much slower. |
+| **Encoder model** | A model that reads text and outputs a classification or a numeric score (BERT and FinBERT are examples). Small, fast, and well suited to sentiment scoring. |
+| **Generative model** | A model that writes text. Far larger for a given quality of judgement, and what "LLM" usually refers to. |
+| **Embedding model** | A model that turns text into a vector of numbers so that similar passages sit near each other, enabling semantic search. Small enough to run locally with ease. |
+| **Inference** | Running a trained model to get an output, as opposed to training it. |
+| **Throughput** | How much work a model gets through per second — documents per second for scoring, tokens per second for generation. |
+| **Ollama / llama.cpp** | Tools for running quantised models locally. llama.cpp is the underlying engine; Ollama is a friendlier wrapper around that class of tooling. |
+| **ONNX Runtime** | A runtime that often makes small models meaningfully faster on CPU. |
+| **vLLM** | A high-throughput serving engine aimed at large GPUs and many concurrent users — overkill for a single laptop. |
+| **Pinned checkpoint** | Fixing the exact model version used, so results can be reproduced later. Hosted APIs can change the model behind a name without notice; pinning is what makes research comparable over time. |
+| **CUDA** | NVIDIA's GPU compute platform, which most local-model tooling targets. |
+| **ROCm** | AMD's equivalent of CUDA. Support outside Linux is considerably less mature. |
+
+---
+
 ## Equity research terms
 
 Used on the [`research/equity-pipeline`](../../tree/research/equity-pipeline) branch.
