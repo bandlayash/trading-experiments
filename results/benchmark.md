@@ -13,6 +13,7 @@ Strategy                Sharpe     IS    OOS     CAGR     Vol    MaxDD   Growth 
 Donchian+Aroon            0.90   0.86   0.97    46.6%   71.8%   -75.7%   262.0x    79%        0.9
 SMA+Momentum              0.81   0.86   0.83    38.0%   71.7%   -74.2%   108.1x    76%        4.0
 Seykota                   0.49   0.52   0.49     5.2%   11.7%   -16.1%     2.1x    12%        6.1
+EMA9/RSI14 MeanRev        0.39   0.55   0.35     7.4%   27.6%   -50.8%     2.8x     2%        1.0
 -------------------------------------------------------------------------------------------------
 Buy & hold SOXL           0.90   1.05   0.85    49.1%   91.8%   -90.5%   335.4x   100%          -
 Buy & hold SMH            1.02   1.08   1.05    29.7%   29.8%   -45.3%    44.1x   100%          -
@@ -23,6 +24,7 @@ Strategy                 2012-2015   2016-2019   2020-2023   2024-2027
 Donchian+Aroon                0.71        0.99        0.88        1.09
 SMA+Momentum                  0.63        1.05        0.66        1.05
 Seykota                       0.23        0.76        0.46        0.53
+EMA9/RSI14 MeanRev            0.79        0.32        0.41        0.27
 Buy & hold SOXL               0.89        1.20        0.69        1.07
 Buy & hold SMH                0.92        1.22        0.82        1.39
 
@@ -30,4 +32,5 @@ Parameters used:
   Donchian+Aroon       {'entry_len': 50, 'exit_len': 63, 'aroon_len': 50, 'aroon_thresh': 50.0}
   SMA+Momentum         {'sma_len': 200, 'mom_len': 252}
   Seykota              {'ema_fast': 50, 'ema_slow': 200, 'risk_per_trade': 0.02, 'atr_len': 14, 'atr_mult': 4.0, 'max_deploy': 1.0}
+  EMA9/RSI14 MeanRev   {'ema_len': 9, 'rsi_len': 14, 'rsi_entry': 30.0, 'max_hold': 0}
 ```

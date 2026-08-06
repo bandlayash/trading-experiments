@@ -9,8 +9,8 @@ Each module exposes the same interface:
 so `run_benchmark.py` can score them interchangeably on identical bars and costs.
 """
 
-from . import donchian_aroon, seykota, sma_momentum
+from . import donchian_aroon, ema_rsi_meanrev, seykota, sma_momentum
 
-ALL = [donchian_aroon, sma_momentum, seykota]
+ALL = [donchian_aroon, sma_momentum, seykota, ema_rsi_meanrev]
 
-__all__ = ["donchian_aroon", "sma_momentum", "seykota", "ALL"]
+__all__ = ["donchian_aroon", "sma_momentum", "seykota", "ema_rsi_meanrev", "ALL"]

@@ -23,10 +23,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from common import load_pair, perf_stats                      # noqa: E402
 from common.engine import COST_PER_SIDE                       # noqa: E402
-from strategies import donchian_aroon, seykota, sma_momentum  # noqa: E402
+from strategies import donchian_aroon, ema_rsi_meanrev, seykota, sma_momentum  # noqa: E402
 
 WARMUP = 252
-STRATEGIES = [donchian_aroon, sma_momentum, seykota]
+STRATEGIES = [donchian_aroon, sma_momentum, seykota, ema_rsi_meanrev]
 failures: list[str] = []
 
 
@@ -78,6 +78,27 @@ def test_degenerate_params(signal: pd.Series, traded: pd.Series) -> None:
           f"exposure {r.exposure:.0%}")
 
 
+def test_rsi_bounds() -> None:
+    """RSI must stay in [0, 100] and hit its defined values in the degenerate cases."""
+    rising = pd.Series(np.arange(1, 101, dtype=float))
+    falling = pd.Series(np.arange(100, 0, -1, dtype=float))
+    flat = pd.Series(np.full(100, 50.0))
+
+    r_up, r_dn, r_flat = (ema_rsi_meanrev.rsi(s, 14) for s in (rising, falling, flat))
+    check(abs(r_up.iloc[-1] - 100.0) < 1e-9, "RSI: unbroken gains -> 100",
+          f"got {r_up.iloc[-1]:.4f}")
+    check(abs(r_dn.iloc[-1] - 0.0) < 1e-9, "RSI: unbroken losses -> 0",
+          f"got {r_dn.iloc[-1]:.4f}")
+    check(abs(r_flat.iloc[-1] - 50.0) < 1e-9, "RSI: perfectly flat -> 50",
+          f"got {r_flat.iloc[-1]:.4f}")
+
+    rng = np.random.default_rng(0)
+    noisy = pd.Series(100 * np.exp(np.cumsum(rng.normal(0, 0.02, 2000))))
+    r = ema_rsi_meanrev.rsi(noisy, 14).dropna()
+    check(bool((r >= 0).all() and (r <= 100).all()), "RSI: stays within [0, 100]",
+          f"range {r.min():.2f}-{r.max():.2f}")
+
+
 def test_metrics_sanity() -> None:
     """perf_stats must agree with hand-computable answers on synthetic input."""
     flat = pd.Series(0.0, index=pd.date_range("2020-01-01", periods=500, freq="B"))
@@ -104,6 +125,7 @@ if __name__ == "__main__":
     test_costs_reduce_returns(signal, traded)
     test_flat_means_flat(signal, traded)
     test_degenerate_params(signal, traded)
+    test_rsi_bounds()
     test_metrics_sanity()
 
     print(f"\n{'ALL PASSED' if not failures else 'FAILURES: ' + ', '.join(failures)}")
