@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# Price data is re-downloadable; keep the repo light and avoid redistributing vendor data.
+data/cache/
+
+.env
+.DS_Store

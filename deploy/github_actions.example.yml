@@ -1,0 +1,155 @@
+# =====================================================================================
+# EXAMPLE ONLY -- this file does not run.
+#
+# GitHub only executes workflow files that live in `.github/workflows/` AND end in
+# `.yml` or `.yaml`. This file is in `deploy/` and ends in `.example.yml`, so it is
+# inert twice over. That is deliberate: this repo is research, and nothing in it is
+# wired to a broker.
+#
+# To adapt it you would copy it to `.github/workflows/bot.yml` and replace the
+# placeholder runner step with real code. Do NOT do that with live credentials until
+# the runner implements everything in deploy/README.md -> "What any live deployment
+# needs" (idempotency, reconciliation, structured logging, kill switch, alerting).
+#
+# See deploy/README.md for why the native `schedule:` trigger is not trustworthy on its
+# own, and what to use instead.
+# =====================================================================================
+
+name: Trading bot (EXAMPLE -- does not run)
+
+on:
+  # Manual trigger from the Actions tab. This is also the trigger an external cron
+  # service would hit via the REST API:
+  #
+  #   POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches
+  #
+  # Driving the workflow externally (e.g. cron-job.org) rather than trusting GitHub's
+  # own scheduler is the recommended setup -- see deploy/README.md. The external service
+  # owns the timing and, usefully, will tell you when a ping fails. GitHub's scheduler
+  # will not tell you when it silently skips a run.
+  workflow_dispatch:
+    # Optional inputs make manual runs useful for debugging without editing the file.
+    inputs:
+      dry_run:
+        description: "Compute the signal and log the decision, but place no orders"
+        type: boolean
+        default: true      # default to the SAFE option; opting into trading is explicit
+
+  # ---------------------------------------------------------------------------------
+  # Native scheduling -- commented out on purpose. Two documented behaviours make this
+  # unsuitable as the ONLY trigger for anything that moves money:
+  #
+  #   1. The finest granularity is 5 minutes. You cannot ask for tighter.
+  #   2. Scheduled runs are delayed or DROPPED ENTIRELY under platform load, with no
+  #      notification. For a daily-bar strategy a delay is survivable; a dropped run
+  #      means the day's exit never happened.
+  #
+  # Also note cron here is always UTC -- it does not follow US daylight saving. The
+  # market's 16:00 close is 20:00 UTC in winter and 19:00 UTC in summer, so a fixed UTC
+  # schedule drifts an hour twice a year. An external scheduler with real timezone
+  # support (America/New_York) handles this correctly and is another reason to prefer one.
+  #
+  # schedule:
+  #   - cron: "45 19 * * 1-5"   # 15:45 ET during EDT / 14:45 ET during EST -- see above
+  # ---------------------------------------------------------------------------------
+
+# Least privilege. This workflow reads code and nothing else. If you later add trade
+# notifications as GitHub issues, that needs `issues: write` -- add it then, not now.
+permissions:
+  contents: read
+
+# Never let two invocations run at once. Without this, an external pinger that fires
+# twice (retry, double-click, overlapping schedules) could run two decisions in parallel
+# against the same account. `cancel-in-progress: false` lets the first one finish rather
+# than killing it mid-order, which is the safer failure.
+concurrency:
+  group: trading-bot
+  cancel-in-progress: false
+
+jobs:
+  run-strategy:
+    runs-on: ubuntu-latest
+
+    # A hung job burns Actions minutes and, worse, can overlap the next invocation.
+    # This strategy decides in seconds; anything past a few minutes is a stuck network
+    # call and should be killed.
+    timeout-minutes: 5
+
+    steps:
+      # --- Kill switch --------------------------------------------------------------
+      # A repository VARIABLE (Settings -> Secrets and variables -> Actions -> Variables),
+      # not a secret -- it is not sensitive and you want to read it at a glance. Flipping
+      # it to anything other than `true` halts trading immediately: no commit, no deploy,
+      # no code change. That reflex is the entire point.
+      #
+      # This runs FIRST, before checkout, so a halted bot does nothing at all.
+      #
+      # Note the `!= 'true'` comparison: an UNSET variable is an empty string, which fails
+      # the check and halts. The kill switch fails CLOSED, which is the only correct
+      # direction -- an unreadable flag must mean "do not trade", never "assume it's fine".
+      - name: Check kill switch
+        if: vars.LIVE_ENABLED != 'true'
+        run: |
+          echo "LIVE_ENABLED is not 'true' -- halting before any side effects."
+          exit 1
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          # Caches the pip download directory keyed on the requirements file, so the
+          # dependency install is fast on every run after the first. Harmless, but at
+          # one run a day the cache may well expire between invocations anyway.
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        # `--quiet` keeps the log readable. On a PUBLIC repo these logs are world-visible,
+        # so there is a real argument for logging less rather than more.
+        run: pip install --quiet -r requirements.txt
+
+      - name: Run strategy
+        env:
+          # Credentials come from repo SECRETS and are never in the repo. Two things to
+          # understand before trusting this:
+          #   * Masking in logs is a string filter, not a security boundary. Anything you
+          #     print in transformed form (base64, sliced, JSON-escaped) will NOT be masked.
+          #   * On a public repo, workflow logs are world-readable. Assume anything logged
+          #     is published.
+          # These are placeholder names -- this example has no broker wired up.
+          BROKER_KEY: ${{ secrets.BROKER_KEY }}
+          BROKER_SECRET: ${{ secrets.BROKER_SECRET }}
+
+          # Non-sensitive config as variables, with literal fallbacks so a missing
+          # variable does not silently change behaviour to something unintended.
+          STRATEGY: ${{ vars.STRATEGY || 'donchian_aroon' }}
+          SIGNAL_SYMBOL: ${{ vars.SIGNAL_SYMBOL || 'SMH' }}
+          TRADE_SYMBOL: ${{ vars.TRADE_SYMBOL || 'SOXL' }}
+
+          # Manual runs default to dry-run (see the input default above). An external
+          # scheduler calling the API without this input yields an empty string, so the
+          # runner must treat "not exactly 'false'" as dry-run -- fail safe, again.
+          DRY_RUN: ${{ inputs.dry_run }}
+
+        # The placeholder runner deliberately exits non-zero: it is pseudocode, not a bot.
+        # Left as-is, this step FAILS -- which is the correct behaviour for an example
+        # workflow and a useful reminder if anyone copies this file without reading it.
+        # Replacing this line with a real entry point is the point at which you stop
+        # doing research and start risking money. Read deploy/README.md before you do.
+        run: python deploy/runner_pseudocode.py
+
+      # --- Dead-man's switch ---------------------------------------------------------
+      # The failure this strategy most needs to catch is the run that DID NOT HAPPEN --
+      # and by construction it sends no error. A heartbeat pinged only on success, watched
+      # by an external monitor that alerts when pings STOP arriving, is the only mechanism
+      # that catches total failure of the scheduler, the runner, or the network.
+      #
+      # `if: success()` is the whole trick: a failed or skipped job sends no ping, and the
+      # monitor notices the silence.
+      #
+      # - name: Heartbeat
+      #   if: success()
+      #   run: curl --silent --show-error --max-time 10 "${{ secrets.HEARTBEAT_URL }}"
