@@ -118,6 +118,11 @@ model, on identical bars.
 
 ## Expected results
 
+
+Growth of $1 on a log scale, so equal vertical distances are equal percentage moves. Benchmarks are dashed and grey; the out-of-sample period begins at the vertical line.
+
+![SMA + Momentum equity curve against buy-and-hold SPY, SMH and SOXL](results/charts/eq_sma_momentum.png)
+
 All figures below come from `python run_benchmark.py`, over **2012-01-03 → 2026-08-05**
 (3,668 trading days), net of **5 bps per side**, with Sharpe computed at a **0% risk-free rate**.
 In-sample is before 2020-01-01; out-of-sample is 2020-01-01 onward.
@@ -324,3 +329,27 @@ python run_benchmark.py --write         # regenerate results/benchmark.md
 Every figure in this document is produced by that command. If a number here disagrees with
 [`results/benchmark.md`](results/benchmark.md), the generated file is correct and this document is
 stale — the failure mode described in the correction above.
+
+---
+
+## Glossary
+
+Abbreviations used on this page. The repo-wide list, covering every term used anywhere in this project, is in [`GLOSSARY.md`](GLOSSARY.md) — it is available on every branch.
+
+| Term | Definition |
+|---|---|
+| **Sharpe ratio** | Return per unit of volatility (annualised mean daily return / annualised standard deviation), at a 0% risk-free rate. ~1.0 is respectable. |
+| **CAGR** | Compound Annual Growth Rate - the average yearly compounded return. |
+| **Max DD (drawdown)** | Worst peak-to-trough decline. -75% means the account fell to a quarter of its previous high. |
+| **IS / OOS** | In-sample (2012-2019, used for tuning) vs out-of-sample (2020-2026, held back). A large drop from IS to OOS indicates overfitting. |
+| **Vol** | Annualised standard deviation of daily returns - how much the value bounces around. |
+| **bps** | Basis points - hundredths of a percent. 5 bps = 0.05%. |
+| **Exposure** | Share of days actually holding a position rather than sitting in cash. |
+| **Round trip** | One complete buy-then-sell cycle, i.e. two trades. |
+| **SMH / SOXL / SPY** | VanEck Semiconductor ETF (the signal instrument) / Direxion Daily Semiconductor Bull 3x (the traded instrument) / SPDR S&P 500 ETF (the broad-market benchmark). |
+| **B&H** | Buy and hold - the do-nothing benchmark. |
+| **SMA** | Simple Moving Average - the plain average of the last n closes. SMA(200) is a common dividing line between uptrend and downtrend. |
+| **Absolute momentum** | Comparing an instrument to its own past, e.g. is the 12-month return positive. Distinct from ranking instruments against each other. |
+| **Stateless signal** | A signal that depends only on today's market, so it flips every time price crosses the threshold. The source of whipsaw. |
+| **Whipsaw** | Repeatedly being stopped out and re-entering in choppy price action, paying costs each time. |
+| **Regime filter** | A rule deciding whether to be in the market at all. |
