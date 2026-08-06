@@ -167,6 +167,11 @@ strategy holds cash 97.6% of the time. See §6.
 
 ## 3. Expected results
 
+
+Growth of $1 on a log scale, so equal vertical distances are equal percentage moves. Benchmarks are dashed and grey; the out-of-sample period begins at the vertical line.
+
+![EMA9/RSI14 mean reversion equity curve against buy-and-hold SPY, SMH and SOXL](results/charts/eq_ema_rsi_meanrev.png)
+
 Backtest period **2012-01-03 → 2026-08-05** (3,668 trading days), signal SMH / traded SOXL,
 5 bps per side, Sharpe at 0% risk-free. In-sample before 2020-01-01, out-of-sample after.
 
@@ -477,3 +482,29 @@ print(perf_stats(mr.run(signal, signal).daily_ret))                   # unlevera
 
 If a number here disagrees with [`results/benchmark.md`](results/benchmark.md), the generated
 file is correct and this document is stale.
+
+---
+
+## Glossary
+
+Abbreviations used on this page. The repo-wide list, covering every term used anywhere in this project, is in [`GLOSSARY.md`](GLOSSARY.md) — it is available on every branch.
+
+| Term | Definition |
+|---|---|
+| **Sharpe ratio** | Return per unit of volatility (annualised mean daily return / annualised standard deviation), at a 0% risk-free rate. ~1.0 is respectable. |
+| **CAGR** | Compound Annual Growth Rate - the average yearly compounded return. |
+| **Max DD (drawdown)** | Worst peak-to-trough decline. -75% means the account fell to a quarter of its previous high. |
+| **IS / OOS** | In-sample (2012-2019, used for tuning) vs out-of-sample (2020-2026, held back). A large drop from IS to OOS indicates overfitting. |
+| **Vol** | Annualised standard deviation of daily returns - how much the value bounces around. |
+| **bps** | Basis points - hundredths of a percent. 5 bps = 0.05%. |
+| **Exposure** | Share of days actually holding a position rather than sitting in cash. |
+| **Round trip** | One complete buy-then-sell cycle, i.e. two trades. |
+| **SMH / SOXL / SPY** | VanEck Semiconductor ETF (the signal instrument) / Direxion Daily Semiconductor Bull 3x (the traded instrument) / SPDR S&P 500 ETF (the broad-market benchmark). |
+| **B&H** | Buy and hold - the do-nothing benchmark. |
+| **EMA** | Exponential Moving Average - a moving average weighting recent prices more heavily. |
+| **RSI** | Relative Strength Index - a 0-100 oscillator measuring how one-sided recent moves have been. Below 30 is conventionally oversold. |
+| **Wilder smoothing** | The exponential average with alpha = 1/n used inside a correct RSI. Not a simple rolling mean - the difference shifts threshold crossings. |
+| **Mean reversion** | Betting a price move will reverse. Buys weakness. The opposite assumption to trend following. |
+| **t-statistic** | How many standard errors an average sits from zero. An absolute value above ~2 is conventionally 'unlikely to be chance'. |
+| **CI (confidence interval)** | A range that plausibly contains the true value. One excluding zero is evidence an effect is real. |
+| **Path risk** | Losses experienced *during* a trade that a closed-trade record never shows. |
