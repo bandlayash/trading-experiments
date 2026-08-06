@@ -271,153 +271,181 @@ parallelism is unavailable. The important part is persisting each batch as it co
 
 ## 4a. Can this run on local models?
 
-Short answer: **two of the five stages already do, and the other three are the worst possible
-fit for a small local model.**
+Short answer: **two of the five stages already do, and the three that need a model need a big
+one.**
 
-That is a more interesting answer than it first looks. The usual assumption about local
-inference is that it trades speed for cost — slower, but free. Here the trade is different.
-Stages 1 and 4 are the compute-heavy ones and they involve no model at all, so they are already
-local and already free. The stages that *do* need a model are the ones where a small model is
-not slower, it is **less capable at the specific thing being asked of it**. Running them locally
-does not cost time; it costs judgement quality, which is the only thing this pipeline produces.
+That shape is unusual and it inverts the assumption people bring to this question. The normal
+trade is "local is cheaper but slower". Here it is neither. Stages 1 and 4 are the compute-heavy
+ones and involve no model at all, so they are already local and already free. The stages that do
+need a model need it for open-ended *judgement* — which is the capability that degrades fastest as
+models get smaller, and therefore the one that demands the most expensive hardware to run locally.
 
-The hardware this section is written against:
-
-| Component | Spec |
-|---|---|
-| GPU | NVIDIA GeForce RTX 3050 Laptop, **4 GB VRAM**, CUDA-capable |
-| CPU | AMD Ryzen 7 6800HS, 8 cores / 16 threads |
-| RAM | 13.7 GB total, assume roughly 8–9 GB usable after Windows |
-| Disk | ~650 GB free |
-| OS | Windows 11 |
+This section works out what that hardware would actually be, in the order that matters: **what the
+task needs → what model size delivers it → what machine runs that model.**
 
 ### 4a.1 Stage by stage
 
-| Stage | Needs a model? | Runs locally on this hardware? | Verdict |
+| Stage | Needs a model? | Already local? | Notes |
 |---|---|---|---|
-| **1 — Screening** | **No.** pandas and numpy scoring over ~1,000 companies | **Already does.** Nothing to change | Local today. The only external dependency is the data pull |
-| **2 — Adversarial research** | Yes, plus **live web access** | Model yes, browsing no | A local model cannot browse. You still need a search API or news feed, and the reasoning is open-ended over fresh information — the weakest spot for a small model |
-| **3 — Scenario modelling** | Yes, heavily | Technically yes, usefully no | The worst fit in the pipeline. See §3.3 — this is already the stage most exposed to wishful thinking |
-| **4 — Portfolio construction** | **No.** scipy SLSQP over a covariance matrix | **Already does**, trivially | A few hundred names is nothing computationally. Local today |
-| **5 — Rebalancing** | Inherits 1–4 | Inherits 1–4 | Same split: the arithmetic is local, the judgement is not |
+| **1 — Screening** | **No.** pandas and numpy over ~1,000 companies | **Yes, entirely** | Bounded by how fast fundamentals can be fetched, not by compute |
+| **2 — Adversarial research** | Yes, plus **live web access** | No | A local model cannot browse. You still need a search or news feed regardless |
+| **3 — Scenario modelling** | Yes, heavily | No | The hardest requirement in the pipeline. See §4a.2 |
+| **4 — Portfolio construction** | **No.** scipy SLSQP over a covariance matrix | **Yes, entirely** | Solves in seconds for a few hundred names |
+| **5 — Rebalancing** | Inherits 1–4 | Partially | The arithmetic is local; the judgement is not |
 
-The two stages that would benefit most from a fast local GPU are the two that never touch a GPU.
-Stage 1 is bounded by how quickly fundamentals can be fetched, and Stage 4 solves in seconds.
+The two stages that would benefit most from a fast GPU are the two that never touch one. Anyone
+asking "can I avoid paying for inference?" should notice that half this pipeline never involved
+inference to begin with.
 
-### 4a.2 Why this differs from the sentiment branch
+### 4a.2 What model size the judgement stages actually need
 
-The [sentiment branch](../../tree/strategy/sentiment) reaches the opposite conclusion and
-recommends pinning a local model. That is not an inconsistency — the tasks are different in kind.
+This is the crux, and it is worth being blunt about. Stages 2 and 3 ask a model to weigh a bull
+case against a bear case, assign probabilities to scenarios, set price targets, and then argue
+against its own output and revise. That is open-ended reasoning, and reasoning is the capability
+that falls off fastest with parameter count.
+
+| Model class | What it can do for this pipeline | Verdict for Stages 2–3 |
+|---|---|---|
+| Under ~7B | Formatting, simple extraction | Not usable for judgement |
+| ~7–14B | Reliable structured extraction, summarisation, deduplication | Not usable for judgement. Will produce fluent output that reads correct and is not worth acting on |
+| ~30–32B | Coherent analysis, weak self-critique | Marginal. Better than nothing, clearly below frontier |
+| ~70B | Genuinely useful analysis; the realistic floor for judgement work | **The practical entry point** — still below a frontier API |
+| 120B+ / large MoE | Approaches frontier behaviour on reasoning | Closest local equivalent, at serious hardware cost |
+
+So the honest requirement is **~70B as a floor and 120B+ to approach frontier quality** — not the
+3B–14B range that fits comfortably on ordinary hardware.
+
+The failure mode matters as much as the capability gap. A small model asked to assign a bull-case
+probability and then critique itself will emit something in exactly the right format, with a
+decimal point, that is not worth acting on. §3.3 already warns this stage produces "a judgement
+call wearing a decimal point"; a weak model wearing the same decimal point is indistinguishable at
+a glance. **The failure is quiet, which makes it worse than an obvious one.**
+
+### 4a.3 The hardware that follows
+
+Two numbers govern this. At Q4_K_M quantisation weights cost roughly **0.56 GB per billion
+parameters**, and total working memory runs **1.2×–1.5×** that once the KV cache and overhead are
+included. Separately, generation speed is memory-bandwidth-bound:
+
+```
+generation speed ≈ memory bandwidth ÷ size of the model in memory
+```
+
+which means a machine can have enough memory to *load* a model and still be too slow to *use* it.
+
+| Target class | Weights at Q4 | Working memory | Discrete GPU route | Unified memory route |
+|---|---|---|---|---|
+| ~30–32B | ~18–20 GB | 24 GB | One 24 GB card | 32–48 GB unified |
+| **~70B** | ~40 GB | **48 GB** | Two 24 GB cards, or one 48 GB professional card | **64 GB unified** |
+| 120B+ / large MoE | 65 GB+ | **96–128 GB** | Multi-GPU workstation | **128 GB unified** |
+
+**Discrete GPU versus unified memory.** A dedicated GPU delivers high bandwidth — current
+high-end consumer cards sit around 900–1000 GB/s — but capacity is expensive and capped per card,
+so reaching 48 GB or more means multiple cards, with the power, cooling and complexity that
+implies. Unified-memory machines (Apple Silicon, and AMD's Strix Halo class parts) address a large
+pool of system memory as if it were VRAM, putting 64–128 GB within reach far more cheaply. The
+trade is bandwidth: UMA platforms typically run several hundred GB/s rather than ~1000, so a 70B
+model loads comfortably and generates at perhaps single-digit to low-double-digit tokens per
+second.
+
+For *this* pipeline that trade is acceptable. Stages 2 and 3 make on the order of dozens of calls
+per run, not thousands, and nothing is interactive. **A unified-memory machine with 64–128 GB is
+the sensible local route here** — capacity is the binding requirement, latency is not. Verify
+specific capacity and bandwidth figures at purchase time; this part of the market moves quickly.
+
+### 4a.4 Why buying that hardware is hard to justify for this project
+
+The capability gap is only half the argument. The other half is call volume.
+
+This pipeline makes roughly **dozens of model calls per run**, and runs a handful of times a year.
+That is a rounding error of API spend. A workstation capable of running a 70B model well is a
+serious purchase, and at this call volume it would take many years of equivalent API usage to
+justify on cost alone.
+
+Compare with the [sentiment branch](../../tree/strategy/sentiment), where the economics genuinely
+do favour local: that pipeline scores every document in a continuous feed, so volume is high,
+marginal cost per document matters, and the model that does the job is small enough to run
+anywhere. Here volume is low and the model needed is large — the exact inversion.
+
+**Buy the hardware if you want it for other reasons** — privacy, other projects, or the learning
+itself. Do not buy it to make this pipeline cheaper, because inference is not what this pipeline
+spends.
+
+### 4a.5 Why this differs from the sentiment branch
+
+The contrast is the most useful thing in this section, and it generalises well beyond these two
+projects.
 
 | | Sentiment scoring | Equity research judgement |
 |---|---|---|
-| **Task type** | Classification. Map a document onto a tone score | Open-ended generation. Produce probabilities, targets, and a critique of them |
+| **Task type** | Classification — map a document to a score | Open-ended generation — probabilities, targets, and a critique of them |
 | **Output space** | One number on a fixed scale | Structured argument with numbers attached |
-| **Verifiable?** | Yes, against a labelled set | Not on any short horizon — see §7 |
-| **Small-model performance** | Genuinely competitive. A fine-tuned encoder of a few hundred million parameters is purpose-built for this | Degrades sharply. Reasoning quality is the capability that falls off fastest as parameter count drops |
-| **Reproducibility pressure** | High — a research loop needs identical scores on re-run, which argues *for* a pinned local model | Lower — the output is judgement recorded in prose, not a score to be recomputed |
+| **Model size needed** | 110M–400M encoder | 70B+ generative |
+| **Hardware needed** | A laptop. No GPU required | 48–128 GB of fast memory |
+| **Call volume** | Every document in a feed — high | Dozens per run — low |
+| **Local verdict** | **Recommended** | **Not worth it for judgement** |
 
-So the sentiment branch wants a local model partly *because* determinism matters more than raw
-capability there. This pipeline wants the reverse. The general rule worth carrying: **local
-models win on narrow, well-specified, repeatable tasks and lose on open-ended judgement.**
+The rule underneath: **local models win on narrow, well-specified, repeatable, high-volume tasks
+and lose on open-ended judgement.** Sentiment scoring is the former. Scenario modelling is the
+latter.
 
-### 4a.3 What 4 GB of VRAM permits
+### 4a.6 What is worth running locally here
 
-The sentiment branch carries the full arithmetic; the summary is enough here.
+The negative verdict is about judgement, not about local models generally. There is real work in
+this pipeline that a **7B–14B model on 16 GB of VRAM or 32 GB unified** handles well:
 
-At Q4_K_M quantisation, weights cost roughly **0.56 GB per billion parameters** as a rule of
-thumb, before the KV cache and runtime overhead:
+- **Structured extraction and normalisation** — turning fetched articles and filings into
+  structured fields, resolving company mentions to tickers, deduplicating syndicated copies.
+- **Summarising long documents** down to what a stronger model then reasons over. A 10-K runs to
+  hundreds of pages; compressing it locally before the expensive call mirrors the escalation
+  pattern the sentiment branch recommends — make the expensive step rare rather than cheap.
+- **Drafting the per-stock markdown scaffolding** around numbers already computed in Python.
+- **Local embeddings and retrieval** — the one clear win. A small embedding model needs only a
+  few GB and would let filings, transcripts and news be indexed and searched by meaning rather
+  than keyword. This is outside the pipeline's current scope and is the most promising extension,
+  precisely because it plays to what small local models are good at: a consistent numeric
+  representation of text, cheaply, at volume, with no judgement involved.
 
-| Tier | Approximate weights | Fits in 4 GB VRAM? |
+That tier of work needs an ordinary gaming GPU or an entry unified-memory machine — not the 64 GB+
+that judgement-grade models demand.
+
+### 4a.7 The binding cost is data, not inference
+
+§4 documents that the fundamentals source throttles after roughly 800 burst calls and needs
+cached, chunked, resumable pulls with a backfill pass. That is the bottleneck on a run. Running a
+model on your own hardware does not make a rate-limited API answer faster.
+
+| Cost | Scales with | Does local inference help? |
 |---|---|---|
-| ~3B | ~1.7 GB | Yes, comfortably, with room for context |
-| ~4B | ~2.2 GB | Yes |
-| ~7B | ~3.9 GB | No. Weights alone consume the card before any KV cache |
-| ~8B | ~4.5 GB | No. Needs CPU offload |
+| Fundamentals pull | Universe size and vendor rate limits | **No** |
+| News and search access | Documents fetched | **No** — Stage 2 needs live external data wherever the model runs |
+| Model inference | Calls per run — low here | Yes, but it is the smallest term |
+| Judgement quality | The capability of whatever produces it | **No** — this is what local costs you |
 
-13.7 GB of system RAM will hold a 7–8B model on CPU, at low tokens per second — usable for a
-batch job that runs overnight, painful for anything interactive. Treat throughput figures as
-something to measure on the machine rather than predict.
+### 4a.8 Recommendation
 
-The consequence is the point, not the arithmetic: **the models that fit on this GPU sit well
-below the capability tier that Stages 2 and 3 actually need.** A 3–4B model asked to assign a
-bull-case probability and then argue against itself will produce something that looks like the
-required output and is not worth acting on. That failure is quiet, which makes it worse — §3.3
-already warns that this stage produces "a judgement call wearing a decimal point", and a weak
-model wearing the same decimal point is indistinguishable at a glance.
+1. **Keep Stages 1 and 4 as they are** — local, model-free, free. Nothing to change.
+2. **Use a frontier model for Stages 2 and 3.** Judgement quality determines the entire output of
+   this pipeline, and call volume is low enough that cost is not the constraint.
+3. **If local judgement is a requirement** — privacy, or independence from vendors — the entry
+   point is a **70B-class model needing 48 GB of VRAM or 64 GB of unified memory**, accepting
+   output below frontier quality.
+4. **A modest local machine is worth having anyway** for extraction, summarisation and
+   embeddings: 16 GB VRAM or 32 GB unified covers all of it.
 
-### 4a.4 What a local model is genuinely useful for here
+**When to revisit.** If small-model reasoning improves such that a 30B-class model's scenario
+probabilities survive §3.3's red-team step as well as a frontier model's, this changes. That is
+testable rather than a matter of opinion: run both on the same tickers and compare the
+pre-critique and post-critique numbers. A model that meaningfully revises itself under
+self-criticism is doing the work; one whose critique shaves every bull case by a similar amount is
+performing a ritual — which §3.3 already flags as the signature of a rubber stamp.
 
-Constructively, there is real work for a small model — it is just not the judgement.
+### 4a.9 A note on model names
 
-- **Structured extraction and normalisation.** Turning fetched articles or filings into
-  structured fields, deduplicating syndicated copies, resolving company mentions to tickers.
-  Narrow, verifiable, high-volume — exactly the shape small models handle well.
-- **Summarising long documents down to what a stronger model then reasons over.** A 10-K runs to
-  hundreds of pages. Compressing it locally before the expensive step mirrors the escalation
-  pattern the sentiment branch recommends: make the expensive call rare rather than cheap.
-- **Drafting the per-stock markdown scaffolding** around numbers already computed in Python —
-  the boilerplate, tables and formatting, not the analysis.
-- **Not**: setting scenario probabilities, weighing a bull case against a bear case, or assigning
-  conviction scores. Those are the outputs the whole pipeline exists to produce, and they are the
-  ones a small model will get confidently wrong.
-
-The hybrid that follows: **local models for mechanical text work, a frontier model reserved for
-Stage 2 and Stage 3 judgement.** This also happens to be the cheap arrangement, since the
-mechanical work is the high-volume part and the judgement is a few dozen calls per run.
-
-### 4a.5 Local embeddings and retrieval — the one clear win
-
-A small embedding model runs comfortably inside 4 GB and would let filings, transcripts and news
-be indexed and searched locally, permanently, with no per-query cost. Embedding a corpus once
-and querying it repeatedly is exactly the workload local hardware suits: bounded, repeatable,
-and cheap to re-run.
-
-This is currently outside the pipeline's scope — Stage 2 searches the live web rather than a
-local corpus — but it is the natural extension, and it is **the one place where a local model
-would add capability rather than subtract it.** A local index of everything a company has filed
-would support questions the current seven-day news window cannot reach, and it would sidestep the
-point-in-time problem described in §7 for anything captured going forward.
-
-### 4a.6 The binding cost is data, not inference
-
-Worth stating plainly, because it is the practical reason local inference is not the lever that
-matters here. §4 already documents that the fundamentals source throttles after roughly 800 burst
-calls and needs cached, chunked, resumable pulls with a backfill pass. That is the bottleneck on
-a run.
-
-Running a model on your own GPU does not make a rate-limited API return faster. The expensive
-inputs to this pipeline are:
-
-1. **Data access** — fundamentals that throttle, news that is either paid or thin.
-2. **Judgement time**, whether a person's or a capable model's.
-3. **Sanitisation and review** before anything is published, per §6.
-
-GPU compute appears nowhere on that list. Optimising it would be optimising the wrong term.
-
-### 4a.7 Recommendation
-
-Stated as a decision rather than a hedge:
-
-- **Keep Stages 1 and 4 local**, as they already are. No change needed, and no model belongs in
-  either of them.
-- **Use a frontier model for Stages 2 and 3**, where judgement quality dominates and the call
-  volume is low enough that cost is not the constraint.
-- **Consider a local model only for mechanical text preprocessing** and, if the pipeline ever
-  grows a document corpus, **for local embeddings and retrieval**.
-
-**When to revisit.** If small-model reasoning improves to the point that a 3–4B model's scenario
-probabilities survive the §3.3 red-team step as well as a frontier model's, this recommendation
-should flip. That is testable rather than a matter of opinion: run both on the same tickers, and
-compare the **pre-critique and post-critique revisions**. A model that meaningfully revises its
-own numbers under self-criticism is doing the work; one whose critique step shaves every bull
-case by a similar token amount is performing a ritual. §3.3 already flags that uniform adjustment
-as evidence of a rubber stamp — the same test distinguishes a capable model from a weak one.
-
-Everything above is framed in capability tiers and parameter counts rather than specific model
-names or versions, deliberately. Model releases date quickly; the durable parts are the
-arithmetic in §4a.3 and the stage-by-stage split in §4a.1, both of which survive whatever is
-current when this is next read.
+The tiers above are expressed as parameter counts and memory requirements rather than specific
+model names or versions, which date quickly. The durable content is the **stage-by-stage split**
+in §4a.1 — which parts of this pipeline involve a model at all — and the **sizing arithmetic** in
+§4a.3. Both remain true whatever is current when this is next read.
 
 ---
 
