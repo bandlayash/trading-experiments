@@ -16,13 +16,18 @@ import os
 
 import pandas as pd
 
-from common import load_pair, buy_and_hold, perf_stats, split_stats, sub_period_sharpe
+from common import fetch_close, load_pair, buy_and_hold, perf_stats, split_stats, sub_period_sharpe
 from common.engine import COST_PER_SIDE
 from strategies import donchian_aroon, ema_rsi_meanrev, seykota, sma_momentum
 
 OOS_START = "2020-01-01"
 WARMUP = 252
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
+
+# Extra buy-and-hold references beyond the signal/traded pair. SPY is the one most
+# readers will actually calibrate against: "did any of this beat the S&P 500?" is the
+# first question a general audience asks, and the sector proxies do not answer it.
+EXTRA_BENCHMARKS = ("SPY",)
 
 HEADER = (f"{'Strategy':<22}{'Sharpe':>8}{'IS':>7}{'OOS':>7}{'CAGR':>9}"
           f"{'Vol':>8}{'MaxDD':>9}{'Growth':>9}{'Exp':>7}{'Trades/yr':>11}")
@@ -52,6 +57,13 @@ def main() -> None:
 
     benchmarks = [buy_and_hold(traded, idx, f"Buy & hold {args.trade}"),
                   buy_and_hold(signal, idx, f"Buy & hold {args.signal}")]
+    for sym in EXTRA_BENCHMARKS:
+        if sym in (args.signal, args.trade):
+            continue                      # already covered by the pair above
+        # Reindexed onto the pair's trading days so every column is scored on the
+        # SAME bars. US equity ETFs share a calendar, so this is a no-op in practice
+        # -- but asserting it here is cheaper than discovering a mismatch later.
+        benchmarks.append(buy_and_hold(fetch_close(sym), idx, f"Buy & hold {sym}"))
 
     lines = []
 

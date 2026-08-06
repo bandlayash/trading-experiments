@@ -28,10 +28,17 @@ nothing else to go looking for.
 | [`strategy/seykota`](../../tree/strategy/seykota) | **Seykota ATR risk-sizing** | 50/200 EMA trend, position sized to risk 2% of equity at an ATR stop, ATR trailing exit |
 | [`strategy/ema-rsi-meanrev`](../../tree/strategy/ema-rsi-meanrev) | **EMA(9) / RSI(14) mean reversion** | Buy oversold dips below the 9-day EMA, exit when price reverts above it |
 | [`strategy/sentiment`](../../tree/strategy/sentiment) | **Sentiment analysis** — *design only* | Not implemented and not benchmarked: a system-design scaffold covering data feeds, execution, latency and cost |
+| [`research/equity-pipeline`](../../tree/research/equity-pipeline) | **Equity research pipeline** — *scaffold* | A different kind of work entirely: a 5-stage fundamental screen of the ~1,000 largest US companies, ending in portfolio construction. Awaiting a re-run before results are published |
 
-The first four are implemented and benchmarked. `strategy/sentiment` is deliberately a plan
-rather than code — there are no performance numbers for it anywhere in this repo, because
-nothing has been built or tested.
+The first four are implemented and benchmarked. The last two are **not**: `strategy/sentiment`
+and `research/equity-pipeline` are deliberately plans and scaffolds rather than code, and there
+are no performance numbers for either anywhere in this repo, because nothing has been run here
+yet. They are marked as such on their own pages too.
+
+Note that `research/equity-pipeline` is a different discipline from everything else here. The
+four strategies are **systematic timing rules** on one instrument, judged by backtest. The
+equity pipeline is **fundamental stock selection** across a wide universe, judged by portfolio
+construction. They share a repo because they share a research standard, not a method.
 
 **How the branches are organised.** `main` is the home you are reading now: the shared harness,
 all four implementations, the head-to-head benchmark, and the execution notes. Every strategy
@@ -58,6 +65,7 @@ In-sample is before 2020-01-01; out-of-sample is 2020 onward.
 | EMA9/RSI14 mean reversion | 0.39 | 0.55 | 0.35 | 7.4% | 27.6% | −50.8% | 2.8× | 2.4% | 1.0 |
 | *Buy & hold SOXL* | 0.90 | 1.05 | 0.85 | 49.1% | 91.8% | −90.5% | 335× | 100% | — |
 | *Buy & hold SMH* | **1.02** | 1.08 | 1.05 | 29.7% | 29.8% | −45.3% | 44× | 100% | — |
+| *Buy & hold **SPY** (S&P 500)* | 0.94 | 1.14 | 0.83 | 15.3% | 16.6% | −33.7% | 7.9× | 100% | — |
 
 Four-year sub-period Sharpe, as a consistency check across regimes:
 
@@ -68,16 +76,52 @@ Four-year sub-period Sharpe, as a consistency check across regimes:
 | Seykota | 0.23 | 0.76 | 0.46 | 0.53 |
 | EMA9/RSI14 mean reversion | 0.79 | 0.32 | 0.41 | 0.27 |
 | *Buy & hold SMH* | 0.92 | 1.22 | 0.82 | 1.39 |
+| *Buy & hold SPY* | 1.18 | 1.11 | 0.62 | 1.33 |
 
 Full generated output: [`results/benchmark.md`](results/benchmark.md).
+
+### Charts
+
+Growth of $1, log scale — so equal vertical distances are equal percentage moves and the slopes
+can be compared directly. On a linear axis the 262× outcome would flatten everything else onto
+the floor.
+
+![Equity curves for all four strategies against buy-and-hold SPY, SMH and SOXL, 2012–2026](results/charts/equity_curves.png)
+
+The same story told as risk. The vertical axis is return, the horizontal axis is the worst loss
+you had to sit through to get it — up and to the *left* is better.
+
+![Return versus max drawdown scatter, strategies as circles and buy-and-hold as squares](results/charts/risk_return.png)
+
+Drawdowns over time. This is the chart that shows what holding these actually felt like: the
+leveraged strategies spend years underwater, while SPY's worst moment is shallower than the
+leveraged strategies' *typical* one.
+
+![Underwater plot showing drawdown from peak over time](results/charts/drawdowns.png)
+
+In-sample against out-of-sample Sharpe. A bar that collapses from left to right was fitted to
+the first half and did not generalise — the mean-reversion strategy is the clearest case.
+
+![Bar chart comparing in-sample and out-of-sample Sharpe for every strategy and benchmark](results/charts/is_vs_oos.png)
+
+Share of days actually holding a position. This single chart explains most of the Seykota and
+mean-reversion results: a strategy that is in the market 2.4% of the time earns nothing on the
+other 97.6%, no matter how good its trades are.
+
+![Horizontal bar chart of market exposure by strategy](results/charts/exposure.png)
+
+Regenerate all of these with `python make_charts.py`.
 
 ### What these results actually say
 
 Taken together, the conclusions are more modest than the top row suggests:
 
-- **Nothing here beat buy-and-hold SMH on Sharpe (1.02).** Every leveraged strategy bought CAGR
-  with a more-than-proportional increase in drawdown. If risk-adjusted return is your objective,
-  the unleveraged index won this test.
+- **Nothing here beat buying and holding an index.** SMH scores 1.02 and **plain SPY scores
+  0.94** — both above the best strategy in the table. Every leveraged strategy bought extra CAGR
+  with a more-than-proportional increase in drawdown: Donchian earns 3× SPY's return for 2.2× its
+  drawdown *and* a worse Sharpe. If risk-adjusted return is the objective, the honest answer this
+  repo produces is "buy the index". The strategies are only interesting if you have explicitly
+  decided to accept a −75% drawdown in exchange for absolute return.
 - **The Donchian result is the good corner of its parameter neighbourhood, not its centre.**
   Across the 48 nearby parameter sets the median Sharpe is 0.83, against 0.81 for the incumbent.
   Selecting parameters on the in-sample peak instead produced out-of-sample Sharpe of 0.68–0.71 —
@@ -171,8 +215,16 @@ print(perf_stats(result.daily_ret))
 ```
 
 Every strategy module exposes the same interface — `NAME`, `DEFAULTS`, and
-`run(signal, traded, warmup=252, **params) -> StrategyResult` — so adding a fourth is a matter of
+`run(signal, traded, warmup=252, **params) -> StrategyResult` — so adding a fifth is a matter of
 writing one file and adding it to `strategies/__init__.py`.
+
+Regenerating the charts, and checking the docs render correctly:
+
+```bash
+python make_charts.py               # rebuild results/charts/*.png
+python tests/test_no_lookahead.py   # prove no strategy can see the future
+python tests/check_markdown.py      # tables balanced, links resolve, mermaid parses
+```
 
 ---
 
@@ -203,9 +255,38 @@ trading-experiments/
 │   └── ema_rsi_meanrev.py  #   EMA(9)/RSI(14) mean reversion
 ├── deploy/                 # execution options + placeholder runner (not live code)
 ├── results/                # generated: benchmark.md, summary.csv, equity_curves.csv
+│   └── charts/             #   generated PNGs, rebuilt by make_charts.py
+├── tests/
+│   ├── test_no_lookahead.py  # truncation proof + metric/RSI edge cases
+│   └── check_markdown.py     # catches tables, links and mermaid that break on GitHub
 ├── run_benchmark.py        # the head-to-head that produces results/
+├── make_charts.py          # every chart published in this repo
+├── GLOSSARY.md             # every abbreviation used anywhere, defined
 └── requirements.txt
 ```
+
+---
+
+## Glossary
+
+Finance writing is dense with abbreviations, and this repo uses a lot of them — Sharpe, CAGR,
+IS/OOS, ATR, RSI, GFV, T+1, bps, PIT. **[`GLOSSARY.md`](GLOSSARY.md) defines every one of them**,
+in plain language and assuming no prior finance knowledge. It covers performance metrics,
+indicators, instruments and tickers, account mechanics, research methodology, and the NLP terms
+used on the sentiment branch.
+
+It is available on every branch, so whichever page you land on, the definitions are one click
+away. The most load-bearing few:
+
+| Term | Short definition |
+|---|---|
+| **Sharpe ratio** | Return per unit of volatility. ~1.0 is respectable; higher is better |
+| **CAGR** | Compound annual growth rate — the average yearly compounded return |
+| **Max drawdown** | Worst peak-to-trough loss. −75% means the account fell to a quarter of its high |
+| **IS / OOS** | In-sample (2012–2019, used for tuning) vs out-of-sample (2020–2026, held back) |
+| **bps** | Basis points — hundredths of a percent. 5 bps = 0.05% |
+| **Exposure** | Share of days actually holding a position rather than sitting in cash |
+| **Round trip** | One complete buy-then-sell cycle (two trades) |
 
 ---
 
