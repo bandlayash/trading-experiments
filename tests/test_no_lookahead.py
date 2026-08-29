@@ -23,10 +23,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from common import load_pair, perf_stats                      # noqa: E402
 from common.engine import COST_PER_SIDE                       # noqa: E402
-from strategies import donchian_aroon, ema_rsi_meanrev, seykota, sma_momentum  # noqa: E402
+from strategies import donchian_aroon, ema_rsi_meanrev, hmm_regime, seykota, sma_momentum  # noqa: E402
 
 WARMUP = 252
-STRATEGIES = [donchian_aroon, sma_momentum, seykota, ema_rsi_meanrev]
+STRATEGIES = [donchian_aroon, sma_momentum, seykota, ema_rsi_meanrev, hmm_regime]
 failures: list[str] = []
 
 

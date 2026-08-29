@@ -18,7 +18,7 @@ import pandas as pd
 
 from common import fetch_close, load_pair, buy_and_hold, perf_stats, split_stats, sub_period_sharpe
 from common.engine import COST_PER_SIDE
-from strategies import donchian_aroon, ema_rsi_meanrev, seykota, sma_momentum
+from strategies import donchian_aroon, ema_rsi_meanrev, hmm_regime, seykota, sma_momentum
 
 OOS_START = "2020-01-01"
 WARMUP = 252
@@ -52,7 +52,7 @@ def main() -> None:
 
     signal, traded = load_pair(args.signal, args.trade)
     results = [mod.run(signal, traded, warmup=WARMUP)
-               for mod in (donchian_aroon, sma_momentum, seykota, ema_rsi_meanrev)]
+               for mod in (donchian_aroon, sma_momentum, seykota, ema_rsi_meanrev, hmm_regime)]
     idx = results[0].daily_ret.index
 
     benchmarks = [buy_and_hold(traded, idx, f"Buy & hold {args.trade}"),

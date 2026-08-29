@@ -27,13 +27,21 @@ nothing else to go looking for.
 | [`strategy/sma-momentum`](../../tree/strategy/sma-momentum) | **200-day SMA + 12-month momentum** | Hold while price is above its 200-day average *and* the 12-month return is positive |
 | [`strategy/seykota`](../../tree/strategy/seykota) | **Seykota ATR risk-sizing** | 50/200 EMA trend, position sized to risk 2% of equity at an ATR stop, ATR trailing exit |
 | [`strategy/ema-rsi-meanrev`](../../tree/strategy/ema-rsi-meanrev) | **EMA(9) / RSI(14) mean reversion** | Buy oversold dips below the 9-day EMA, exit when price reverts above it |
+| [`strategy/hmm-regime`](../../tree/strategy/hmm-regime) | **Hidden Markov Model regime detection** — *code done, unrun here* | Walk-forward-refit Gaussian HMM infers a bull/bear regime probability from returns; hold while the filtered probability of "bullish" clears a threshold |
+| [`strategy/mag7-overnight`](../../tree/strategy/mag7-overnight) | **MAG7 overnight (close-to-open)** — *code done, unrun here* | Buy the Magnificent Seven at the close, sell at the next open, every name, every night |
 | [`strategy/sentiment`](../../tree/strategy/sentiment) | **Sentiment analysis** — *design only* | Not implemented and not benchmarked: a system-design scaffold covering data feeds, execution, latency and cost |
 | [`research/equity-pipeline`](../../tree/research/equity-pipeline) | **Equity research pipeline** — *scaffold* | A different kind of work entirely: a 5-stage fundamental screen of the ~1,000 largest US companies, ending in portfolio construction. Awaiting a re-run before results are published |
 
-The first four are implemented and benchmarked. The last two are **not**: `strategy/sentiment`
-and `research/equity-pipeline` are deliberately plans and scaffolds rather than code, and there
-are no performance numbers for either anywhere in this repo, because nothing has been run here
-yet. They are marked as such on their own pages too.
+The first four are implemented and benchmarked, with numbers generated in this environment.
+**HMM regime** and **MAG7 overnight** are fully implemented and covered by tests, but this
+research session had no network route to a market data provider (see their own branches for
+what was tried and why) — so, like `strategy/sentiment`, there are **no backtest numbers for
+either of them anywhere in this repo yet**. Unlike sentiment, there is nothing missing but data:
+clone the repo, run `python run_benchmark.py` (HMM regime) or `python run_mag7_overnight.py`
+(MAG7 overnight), and the tables populate themselves. `strategy/sentiment` and
+`research/equity-pipeline` are a different case again — deliberately plans and scaffolds with no
+code behind them at all. Every one of these four "not yet" pages says so plainly on its own
+landing page rather than presenting placeholder numbers as real.
 
 Note that `research/equity-pipeline` is a different discipline from everything else here. The
 four strategies are **systematic timing rules** on one instrument, judged by backtest. The
@@ -195,9 +203,12 @@ git clone https://github.com/bandlayash/trading-experiments.git
 cd trading-experiments
 pip install -r requirements.txt
 
-python run_benchmark.py                    # print the tables
+python run_benchmark.py                    # print the tables (now 5 strategies, incl. HMM regime)
 python run_benchmark.py --write            # regenerate results/
 python run_benchmark.py --signal SPY --trade SPY   # try another instrument pair
+
+python run_mag7_overnight.py               # MAG7 overnight, separate harness -- see below
+python run_mag7_overnight.py --write
 ```
 
 First run downloads price history and caches it under `data/cache/` (git-ignored). Later runs are
@@ -214,9 +225,12 @@ result = donchian_aroon.run(signal, traded, exit_len=80)   # override any parame
 print(perf_stats(result.daily_ret))
 ```
 
-Every strategy module exposes the same interface — `NAME`, `DEFAULTS`, and
-`run(signal, traded, warmup=252, **params) -> StrategyResult` — so adding a fifth is a matter of
-writing one file and adding it to `strategies/__init__.py`.
+Every signal/traded-pair strategy module exposes the same interface — `NAME`, `DEFAULTS`, and
+`run(signal, traded, warmup=252, **params) -> StrategyResult` — so adding another is a matter of
+writing one file and adding it to `strategies/__init__.py`. `strategies/mag7_overnight.py` is the
+one exception: it trades a basket of individual names on a close-to-open schedule rather than one
+signal/traded pair, so it is scored by its own `run_mag7_overnight.py` instead of
+`run_benchmark.py` — see that module's docstring for why.
 
 Regenerating the charts, and checking the docs render correctly:
 
@@ -245,21 +259,25 @@ Those files are **pseudocode and templates by design**. This repo does not place
 ```
 trading-experiments/
 ├── common/                 # shared harness — used identically by every strategy
-│   ├── data.py             #   price loading + on-disk cache
+│   ├── data.py             #   price + OHLC loading, on-disk cache
 │   ├── engine.py           #   result type, cost model, no-look-ahead convention
 │   └── metrics.py          #   Sharpe / CAGR / drawdown / IS-OOS splits
 ├── strategies/
 │   ├── donchian_aroon.py   #   breakout + Aroon filter
 │   ├── sma_momentum.py     #   200-day SMA + 12-month momentum
 │   ├── seykota.py          #   EMA trend + ATR risk sizing
-│   └── ema_rsi_meanrev.py  #   EMA(9)/RSI(14) mean reversion
+│   ├── ema_rsi_meanrev.py  #   EMA(9)/RSI(14) mean reversion
+│   ├── hmm_regime.py       #   walk-forward Gaussian HMM regime detection
+│   └── mag7_overnight.py   #   MAG7 close-to-open basket (own harness, see below)
 ├── deploy/                 # execution options + placeholder runner (not live code)
-├── results/                # generated: benchmark.md, summary.csv, equity_curves.csv
+├── results/                # generated: benchmark.md, mag7_overnight.md, summary.csv, equity_curves.csv
 │   └── charts/             #   generated PNGs, rebuilt by make_charts.py
 ├── tests/
-│   ├── test_no_lookahead.py  # truncation proof + metric/RSI edge cases
-│   └── check_markdown.py     # catches tables, links and mermaid that break on GitHub
-├── run_benchmark.py        # the head-to-head that produces results/
+│   ├── test_no_lookahead.py    # truncation proof + metric/RSI edge cases (needs live data)
+│   ├── test_new_strategies.py  # same proof for HMM regime + MAG7 overnight, on synthetic data
+│   └── check_markdown.py       # catches tables, links and mermaid that break on GitHub
+├── run_benchmark.py        # the signal/traded-pair head-to-head that produces results/
+├── run_mag7_overnight.py   # the separate MAG7 overnight harness
 ├── make_charts.py          # every chart published in this repo
 ├── GLOSSARY.md             # every abbreviation used anywhere, defined
 └── requirements.txt
