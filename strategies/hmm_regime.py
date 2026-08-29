@@ -1,4 +1,7 @@
-"""Strategy 5 -- Hidden Markov Model regime detection, refit walk-forward.
+"""Hidden Markov Model regime detection, refit walk-forward.
+
+The fifth entry in `strategies.ALL` / `run_benchmark.py`, alongside Donchian+Aroon,
+SMA+Momentum, Seykota, and EMA9/RSI14 mean reversion.
 
     fit a Gaussian HMM with `n_states` states on trailing daily log returns of the
         SIGNAL instrument, refit every `refit_every` trading days on the trailing
