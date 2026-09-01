@@ -14,7 +14,10 @@ MAG7 Overnight               -0.12   0.04  -0.27    -3.3%   16.5%   -59.5%    0.
 -----------------------------------------------------------------------------------------------------
 Day session (skipped)        -0.74  -1.16  -0.35   -16.5%   21.3%   -94.8%    0.06x   100%       1742
 Buy & hold basket (eq-wt)     1.22   1.34   1.15    33.6%   26.7%   -49.4%   92.79x   100%          -
+Buy & hold SPY (S&P 500)      0.87   0.94   0.82    14.2%   17.0%   -33.7%    7.96x   100%          -
 =====================================================================================================
+  SPY is scored over THIS harness's window: 3937 nights from 2011-01-03, which starts a year
+  earlier than run_benchmark.py's. The two SPY rows in this repo cover different periods and so differ.
 
 Gross vs net -- where the result actually comes from:
 Leg                          Sharpe     CAGR    Growth      
@@ -25,7 +28,7 @@ Day session, net              -0.74   -16.5%     0.06x
   Cost drag at 10 bps/night x 252 nights = -22.3%/yr.
   The overnight leg breaks even at 4.6 bps/side; this run charges 5.
   Gross overnight and gross day-session growth multiply back to the buy-and-hold
-  row above, which is the arithmetic check that the two sessions tile the period.
+  BASKET row above -- the arithmetic check that the two sessions tile the period.
 
 Per-ticker overnight Sharpe (own history -- names IPO'd at different times):
   AAPL     Sharpe  -0.70   CAGR   -13.7%   3937 nights from 2011-01-03

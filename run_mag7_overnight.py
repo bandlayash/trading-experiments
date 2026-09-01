@@ -18,12 +18,19 @@ import os
 
 import pandas as pd
 
-from common import StrategyResult, load_ohlc_universe, perf_stats, split_stats
+from common import (StrategyResult, buy_and_hold, fetch_close, load_ohlc_universe,
+                    perf_stats, split_stats)
 from common.engine import COST_PER_SIDE
 from strategies import mag7_overnight
 
 OOS_START = "2020-01-01"
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
+
+# The same outside reference `run_benchmark.py` carries, for the same reason: "did this beat the
+# S&P 500?" is the first question a general audience asks, and an equal-weight MAG7 basket does
+# not answer it -- that benchmark is seven of the largest growth names in the best decade they
+# ever had, so beating the day session while losing to SPY would be easy to miss without this row.
+EXTRA_BENCHMARK = "SPY"
 
 HEADER = (f"{'Strategy':<26}{'Sharpe':>8}{'IS':>7}{'OOS':>7}{'CAGR':>9}"
           f"{'Vol':>8}{'MaxDD':>9}{'Growth':>9}{'Exp':>7}{'Trades/yr':>11}")
@@ -100,6 +107,12 @@ def main() -> None:
     # The basket is already named in the header; repeating all seven tickers here overflows
     # the 26-character name column and shifts every numeric column out of alignment.
     bh = buy_and_hold_basket(ohlc, "Buy & hold basket (eq-wt)", index)
+    references = [bh]
+    if EXTRA_BENCHMARK not in args.tickers:
+        # Reindexed onto the same nights, and checked rather than assumed -- `buy_and_hold`
+        # raises rather than filling a missing day with a fabricated 0% return.
+        references.append(buy_and_hold(fetch_close(EXTRA_BENCHMARK), index,
+                                       f"Buy & hold {EXTRA_BENCHMARK} (S&P 500)"))
 
     lines = []
 
@@ -120,8 +133,15 @@ def main() -> None:
     emit("-" * len(HEADER))
     emit(_row(day_session.name, day_session.daily_ret, day_session.exposure,
               day_session.trades_per_year))
-    emit(_row(bh.name, bh.daily_ret, bh.exposure, None))
+    for ref in references:
+        emit(_row(ref.name, ref.daily_ret, ref.exposure, None))
     emit("=" * len(HEADER))
+    if len(references) > 1:
+        # Pre-empt a reader spotting two different SPY Sharpes in one repo and assuming a bug.
+        emit(f"  {EXTRA_BENCHMARK} is scored over THIS harness's window: {len(index)} nights "
+             f"from {index[0].date()}, which starts a year")
+        emit(f"  earlier than run_benchmark.py's. The two {EXTRA_BENCHMARK} rows in this repo "
+             f"cover different periods and so differ.")
 
     # The cost assumption, not the signal, is what decides this table -- so show the split.
     # At 10 bps a night over ~252 nights a year the drag is ~22%/yr, which is larger than
@@ -146,7 +166,7 @@ def main() -> None:
     emit(f"  The overnight leg breaks even at {breakeven_bps:.1f} bps/side; this run "
          f"charges {COST_PER_SIDE*1e4:.0f}.")
     emit("  Gross overnight and gross day-session growth multiply back to the buy-and-hold")
-    emit("  row above, which is the arithmetic check that the two sessions tile the period.")
+    emit("  BASKET row above -- the arithmetic check that the two sessions tile the period.")
 
     emit("")
     emit("Per-ticker overnight Sharpe (own history -- names IPO'd at different times):")

@@ -102,6 +102,12 @@ each close to the next open, every night, equal-weighted across whichever have l
 | MAG7 overnight (close → open) | −0.12 | 0.04 | −0.27 | −3.3% | 16.5% | −59.5% | 0.60× |
 | *Day session (the part it skips)* | −0.74 | −1.16 | −0.35 | −16.5% | 21.3% | −94.8% | 0.06× |
 | *Buy & hold the basket, equal-weight* | **1.22** | 1.34 | 1.15 | 33.6% | 26.7% | −49.4% | 93× |
+| *Buy & hold **SPY** (S&P 500)* | 0.87 | 0.94 | 0.82 | 14.2% | 17.0% | −33.7% | 8.0× |
+
+SPY appears here for the same reason it appears in the table above — it is the reference a general
+audience actually calibrates against, and an equal-weight MAG7 basket is not one. Note it scores
+0.87 here against 0.94 in the pair benchmark: this harness starts in 2011 rather than 2012, so the
+two SPY rows cover different windows. Neither is wrong; they are not the same measurement.
 
 Those net numbers are almost entirely an artefact of the cost assumption, so the split matters
 more than the total:
@@ -112,6 +118,11 @@ more than the total:
 | Overnight, net of 10 bps/night | −0.12 | −3.3% | 0.60× |
 | Day session, **gross** | 0.44 | 7.4% | 3.06× |
 | Day session, net | −0.74 | −16.5% | 0.06× |
+
+Set against SPY's 8.0×, the split is starker still: **gross, the overnight leg alone returned
+roughly four times the S&P 500 over the same nights (30.5× against 8.0×), while the day session
+underperformed it (3.06×).** The premium is not a rounding artefact — it is the dominant term in
+fifteen years of MAG7 returns. It is simply not reachable through 5 bps a side, twice a night.
 
 Full generated output: [`results/mag7_overnight.md`](results/mag7_overnight.md).
 

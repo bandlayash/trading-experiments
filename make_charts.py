@@ -234,6 +234,7 @@ def chart_mag7_sessions() -> None:
     idx = overnight.daily_ret.index
     day = day_session_basket(ohlc, idx)
     bh = buy_and_hold_basket(ohlc, "Buy & hold basket (eq-wt)", idx)
+    spy = buy_and_hold(fetch_close("SPY"), idx, "Buy & hold SPY")
 
     # Both gross and net are drawn. Net alone would be a chart about the cost assumption:
     # the two net lines fall to 0.60x and 0.06x and visibly do NOT reconstruct the
@@ -246,6 +247,7 @@ def chart_mag7_sessions() -> None:
         return (1.0 + series).cumprod()
 
     series = [
+        (spy.daily_ret, "Buy & hold SPY", "#777777", 1.2, "--", 0.9),
         (bh.daily_ret, "Buy & hold basket (eq-wt)", "#111111", 1.5, "--", 1.0),
         (overnight.daily_ret + cost, "Overnight, gross", "#0072B2", 2.0, "-", 1.0),
         (overnight.daily_ret, "Overnight, net of 10 bps/night", "#0072B2", 1.3, ":", 0.75),
