@@ -66,11 +66,21 @@ def split_stats(daily_ret: pd.Series, oos_start: str) -> dict:
 
 def sub_period_sharpe(daily_ret: pd.Series, starts=("2012", "2016", "2020", "2024"),
                       span: int = 4) -> dict:
-    """Sharpe within fixed multi-year blocks -- a consistency check across regimes."""
+    """Sharpe within fixed multi-year blocks -- a consistency check across regimes.
+
+    The final block is labelled by the data it actually contains, not by the nominal span.
+    A block headed "2024-2027" that in fact holds 2.7 years of bars invites the reader to
+    compare it with the full four-year blocks beside it as though they carried equal
+    weight; a trailing `*` marks the ones that do not.
+    """
     idx = daily_ret.index
     out = {}
     for start in starts:
         chunk = daily_ret.loc[(idx >= start) & (idx < str(int(start) + span))]
-        label = f"{start}-{int(start) + span - 1}"
+        nominal_end = int(start) + span - 1
+        if len(chunk) and chunk.index[-1].year < nominal_end:
+            label = f"{start}-{chunk.index[-1].year}*"      # * = block truncated by data end
+        else:
+            label = f"{start}-{nominal_end}"
         out[label] = perf_stats(chunk)["sharpe"] if len(chunk) > 20 else float("nan")
     return out

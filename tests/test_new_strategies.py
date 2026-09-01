@@ -84,8 +84,6 @@ def test_mag7_overnight_portfolio() -> None:
     c = make_ohlc(seed=3, n=60, start="2018-02-26")
 
     res = mag7_overnight.run({"A": a, "B": b, "C": c})
-    ret_ab_only = mag7_overnight.overnight_returns(a).add(
-        mag7_overnight.overnight_returns(b), fill_value=None)
 
     check(res.round_trips == (len(a) - 1) + (len(b) - 1) + (len(c) - 1),
           "MAG7 overnight: round trips = sum of active name-nights across the basket",

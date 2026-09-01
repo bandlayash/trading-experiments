@@ -43,6 +43,8 @@ strategies, which is why this module is more involved than the rest:
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pandas as pd
 
@@ -85,6 +87,26 @@ def _forward_filter(obs: np.ndarray, startprob: np.ndarray, transmat: np.ndarray
     return probs
 
 
+class _ConvergenceCounter(logging.Handler):
+    """Counts hmmlearn's "Model is not converging" reports instead of printing them.
+
+    hmmlearn emits that warning from `ConvergenceMonitor.report` whenever EM's
+    log-likelihood ticks DOWN between iterations. It is not the same thing as
+    `monitor_.converged`, which is True whenever the last improvement fell below the
+    tolerance -- and a small negative delta satisfies that too. So the flag alone reports
+    every fit as converged while the log fills with warnings; both have to be counted to
+    describe what actually happened.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.WARNING)
+        self.decreases = 0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if "not converging" in record.getMessage():
+            self.decreases += 1
+
+
 def _fit_and_label(train_returns: np.ndarray, n_states: int, random_state: int):
     """Fit a Gaussian HMM on TRAINING data only. Returns HMM params + a bullish mask.
 
@@ -92,6 +114,13 @@ def _fit_and_label(train_returns: np.ndarray, n_states: int, random_state: int):
     called, rather than trusting a fixed state index -- a refit can permute which index
     corresponds to which regime ("label switching"), so pinning meaning to an index would
     silently scramble the strategy's interpretation after any refit that reordered states.
+
+    hmmlearn logs "Model is not converging" from inside `fit` whenever EM's log-likelihood
+    ticks down between iterations. On short training windows that happens routinely, and
+    at a magnitude (~1e-2 on a log-likelihood of ~2e3) that is EM oscillating at its own
+    tolerance floor rather than a fit that failed. Left alone it prints dozens of lines
+    into the middle of the benchmark table. Suppressing it without trace would be the wrong
+    fix, so `signals` routes that log into a counter and reports the tally with the result.
     """
     from hmmlearn.hmm import GaussianHMM
 
@@ -102,12 +131,22 @@ def _fit_and_label(train_returns: np.ndarray, n_states: int, random_state: int):
     means = model.means_.reshape(-1)
     stds = np.sqrt(model.covars_.reshape(-1))
     bullish = means > 0.0        # states with a positive fitted mean daily log return
-    return model.startprob_, model.transmat_, means, stds, bullish
+    converged = bool(getattr(model.monitor_, "converged", True))
+    return model.startprob_, model.transmat_, means, stds, bullish, converged
 
 
 def signals(signal: pd.Series, n_states: int, refit_every: int, train_window: int,
-           prob_thresh: float, random_state: int) -> pd.Series:
-    """Boolean `bullish` series: P(bullish state | data up to today) >= prob_thresh.
+           prob_thresh: float, random_state: int) -> tuple[pd.Series, dict]:
+    """Boolean `bullish` series, plus a report on how the walk-forward refits went.
+
+    Returns `(bullish, fit_report)` counting: `refits` attempted, `not_converged` (EM ran
+    out of iterations without settling), `ll_decreased` (EM's log-likelihood ticked down at
+    least once -- benign oscillation at the tolerance floor, but worth seeing), and
+    `skipped` (too little history to fit). Those counts are part of the result rather than
+    a side effect: a run where most refits failed is not the same experiment as one where
+    none did, and the reader deserves to see which one produced the table.
+
+    P(bullish state | data up to today) >= prob_thresh determines the position.
 
     Refit points are every `refit_every` trading days, starting at the first available
     return. Each refit trains on the trailing `train_window` log returns available AT
@@ -122,32 +161,55 @@ def signals(signal: pd.Series, n_states: int, refit_every: int, train_window: in
 
     refit_starts = list(range(0, len(idx), refit_every))
     bullish_prob = pd.Series(np.nan, index=signal.index)
+    report = {"refits": 0, "not_converged": 0, "ll_decreased": 0, "skipped": 0}
 
+    counter = _ConvergenceCounter()
+    hmm_log = logging.getLogger("hmmlearn.base")
+    was_propagating = hmm_log.propagate
+    hmm_log.addHandler(counter)
+    hmm_log.propagate = False        # count these, do not also print them mid-table
+    try:
+        _refit_loop(refit_starts, values, idx, bullish_prob, report,
+                    n_states, train_window, random_state)
+    finally:
+        hmm_log.removeHandler(counter)
+        hmm_log.propagate = was_propagating
+    report["ll_decreased"] = counter.decreases
+
+    return (bullish_prob >= prob_thresh).fillna(False), report
+
+
+def _refit_loop(refit_starts, values, idx, bullish_prob, report,
+                n_states: int, train_window: int, random_state: int) -> None:
+    """The walk-forward refit sweep itself. Split out so `signals` can wrap it in the
+    logging handler above without indenting the whole loop into a `try`."""
     for k, seg_start in enumerate(refit_starts):
         seg_end = refit_starts[k + 1] if k + 1 < len(refit_starts) else len(idx)
         train_start = max(0, seg_start - train_window)
         train_data = values[train_start:seg_start + 1]     # up to and including refit day
         if len(train_data) < max(4 * n_states, 30):
+            report["skipped"] += 1
             continue         # not enough history yet to fit anything meaningful
         try:
-            startprob, transmat, means, stds, bullish = _fit_and_label(
+            startprob, transmat, means, stds, bullish, converged = _fit_and_label(
                 train_data, n_states, random_state)
         except ValueError:
+            report["skipped"] += 1
             continue          # degenerate window (e.g. near-zero variance): skip, stay flat
+        report["refits"] += 1
+        report["not_converged"] += int(not converged)
 
         seg_obs = values[seg_start:seg_end]
         seg_probs = _forward_filter(seg_obs, startprob, transmat, means, stds)
         p_bullish = seg_probs[:, bullish].sum(axis=1)
         bullish_prob.loc[idx[seg_start:seg_end]] = p_bullish
 
-    return (bullish_prob >= prob_thresh).fillna(False)
-
 
 def run(signal: pd.Series, traded: pd.Series, warmup: int = 252,
         **params) -> StrategyResult:
     p = {**DEFAULTS, **params}
-    bullish = signals(signal, p["n_states"], p["refit_every"], p["train_window"],
-                      p["prob_thresh"], p["random_state"])
+    bullish, fit_report = signals(signal, p["n_states"], p["refit_every"],
+                                  p["train_window"], p["prob_thresh"], p["random_state"])
 
     ret_traded = traded.pct_change()
     idx = signal.index[warmup:]
@@ -166,4 +228,5 @@ def run(signal: pd.Series, traded: pd.Series, warmup: int = 252,
             round_trips += int(not target)
             holding = target
 
-    return StrategyResult(NAME, strat, float(np.mean(invested)), round_trips, p)
+    return StrategyResult(NAME, strat, float(np.mean(invested)), round_trips,
+                          {**p, "fit_report": fit_report})

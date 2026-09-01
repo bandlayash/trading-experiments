@@ -96,7 +96,22 @@ def main() -> None:
     emit("")
     emit("Parameters used:")
     for r in results:
-        emit(f"  {r.name:<20} {r.params}")
+        # `fit_report` is diagnostics, not a tunable -- it is emitted separately below so
+        # the parameter line stays a straight record of what was configured.
+        params = {k: v for k, v in r.params.items() if k != "fit_report"}
+        emit(f"  {r.name:<20} {params}")
+
+    fitted = [(r.name, r.params["fit_report"]) for r in results if "fit_report" in r.params]
+    if fitted:
+        emit("")
+        emit("Walk-forward refits (models refitted during the run):")
+        for name, rep in fitted:
+            emit(f"  {name:<20} {rep['refits']} refits, "
+                 f"{rep['not_converged']} exhausted the EM iteration cap, "
+                 f"{rep['ll_decreased']} logged a log-likelihood decrease, "
+                 f"{rep['skipped']} skipped for insufficient history")
+        emit("  A log-likelihood decrease is EM oscillating at its tolerance floor, not a")
+        emit("  failed fit; it is counted rather than printed so the table stays readable.")
 
     if args.write:
         os.makedirs(RESULTS_DIR, exist_ok=True)

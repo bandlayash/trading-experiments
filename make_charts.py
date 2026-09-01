@@ -22,8 +22,11 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np               # noqa: E402
 import pandas as pd              # noqa: E402
 
-from common import fetch_close, load_pair, buy_and_hold, perf_stats  # noqa: E402
-from strategies import donchian_aroon, ema_rsi_meanrev, seykota, sma_momentum  # noqa: E402
+from common import (fetch_close, load_ohlc_universe, load_pair,  # noqa: E402
+                    buy_and_hold, perf_stats)
+from common.engine import COST_PER_SIDE  # noqa: E402
+from strategies import (donchian_aroon, ema_rsi_meanrev, hmm_regime,  # noqa: E402
+                        mag7_overnight, seykota, sma_momentum)
 
 WARMUP = 252
 OOS_START = "2020-01-01"
@@ -36,6 +39,7 @@ COLORS = {
     "SMA+Momentum":       "#D55E00",
     "Seykota":            "#009E73",
     "EMA9/RSI14 MeanRev": "#CC79A7",
+    "HMM Regime":         "#E69F00",
 }
 BENCH_COLORS = {
     "Buy & hold SPY":  "#111111",
@@ -67,7 +71,8 @@ def _save(fig, name: str) -> str:
 def load_all():
     signal, traded = load_pair("SMH", "SOXL")
     results = [mod.run(signal, traded, warmup=WARMUP)
-               for mod in (donchian_aroon, sma_momentum, seykota, ema_rsi_meanrev)]
+               for mod in (donchian_aroon, sma_momentum, seykota, ema_rsi_meanrev,
+                           hmm_regime)]
     idx = results[0].daily_ret.index
     benches = [buy_and_hold(fetch_close("SPY"), idx, "Buy & hold SPY"),
                buy_and_hold(signal, idx, "Buy & hold SMH"),
@@ -214,6 +219,52 @@ def chart_single(result, benches, idx, filename: str) -> None:
     _save(fig, filename)
 
 
+def chart_mag7_sessions() -> None:
+    """MAG7 overnight against the day session it skips, and against holding the basket.
+
+    This one cannot share the equity-curve chart above: it trades seven individual names on
+    a close-to-open schedule, not SMH-signal-into-SOXL, so its bars are a different
+    instrument on a different calendar. Plotting them on one axis would invite a comparison
+    that is not being made.
+    """
+    from run_mag7_overnight import buy_and_hold_basket, day_session_basket
+
+    ohlc = load_ohlc_universe(list(mag7_overnight.MAG7))
+    overnight = mag7_overnight.run(ohlc)
+    idx = overnight.daily_ret.index
+    day = day_session_basket(ohlc, idx)
+    bh = buy_and_hold_basket(ohlc, "Buy & hold basket (eq-wt)", idx)
+
+    # Both gross and net are drawn. Net alone would be a chart about the cost assumption:
+    # the two net lines fall to 0.60x and 0.06x and visibly do NOT reconstruct the
+    # buy-and-hold line, whereas the two GROSS lines multiply back to it almost exactly.
+    # That reconstruction is the actual finding, so it has to be the thing you can see.
+    cost = 2.0 * COST_PER_SIDE
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+
+    def _curve(series):
+        return (1.0 + series).cumprod()
+
+    series = [
+        (bh.daily_ret, "Buy & hold basket (eq-wt)", "#111111", 1.5, "--", 1.0),
+        (overnight.daily_ret + cost, "Overnight, gross", "#0072B2", 2.0, "-", 1.0),
+        (overnight.daily_ret, "Overnight, net of 10 bps/night", "#0072B2", 1.3, ":", 0.75),
+        (day.daily_ret + cost, "Day session, gross", "#D55E00", 2.0, "-", 1.0),
+        (day.daily_ret, "Day session, net", "#D55E00", 1.3, ":", 0.75),
+    ]
+    for ret, label, color, lw, ls, alpha in series:
+        s = perf_stats(ret)
+        ax.plot(idx, _curve(ret), label=f"{label}  (Sharpe {s['sharpe']:.2f})",
+                color=color, lw=lw, ls=ls, alpha=alpha)
+
+    ax.axvline(pd.Timestamp(OOS_START), color="black", lw=1, alpha=0.35)
+    ax.set_yscale("log")
+    ax.set_ylabel("Growth of $1 (log scale)")
+    ax.set_title("MAG7 sessions — the overnight premium, before and after costs")
+    ax.legend(loc="lower left", fontsize=8, framealpha=0.9, ncol=1)
+    _save(fig, "mag7_sessions.png")
+
+
 def main() -> None:
     print("Loading data...")
     results, benches, idx = load_all()
@@ -226,9 +277,12 @@ def main() -> None:
     chart_exposure(results)
 
     slugs = {"Donchian+Aroon": "donchian_aroon", "SMA+Momentum": "sma_momentum",
-             "Seykota": "seykota", "EMA9/RSI14 MeanRev": "ema_rsi_meanrev"}
+             "Seykota": "seykota", "EMA9/RSI14 MeanRev": "ema_rsi_meanrev",
+             "HMM Regime": "hmm_regime"}
     for r in results:
         chart_single(r, benches, idx, f"eq_{slugs[r.name]}.png")
+
+    chart_mag7_sessions()
 
     print(f"\nDone -> {OUT_DIR}")
 

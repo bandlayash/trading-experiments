@@ -51,6 +51,21 @@ class StrategyResult:
 
 
 def buy_and_hold(prices: pd.Series, index: pd.DatetimeIndex, name: str) -> StrategyResult:
-    """Benchmark: hold the instrument for the whole window, no costs after entry."""
+    """Benchmark: hold the instrument for the whole window, no costs after entry.
+
+    `index` is the scoring calendar -- the trading days the strategies were scored on -- so
+    that every column of the benchmark table is measured over identical bars. Reindexing
+    onto it is a no-op for US equity ETFs, which share a calendar, but it is checked rather
+    than assumed: a date in the scoring calendar with no price would otherwise be filled
+    with a fabricated 0% return and quietly flatter the benchmark's volatility.
+    """
+    absent = index.difference(prices.index)
+    if len(absent):
+        raise ValueError(
+            f"{name}: {len(absent)} of {len(index)} scoring days have no price for this "
+            f"instrument (first {absent[0].date()}). Refusing to fabricate 0% returns -- "
+            f"the calendars genuinely differ, so this benchmark is not comparable here.")
+    # Only the instrument's own first bar can still be NaN, and only when the scoring
+    # calendar starts on it; there is no prior close to difference against.
     ret = prices.pct_change().reindex(index).fillna(0.0)
     return StrategyResult(name=name, daily_ret=ret, exposure=1.0, round_trips=0)

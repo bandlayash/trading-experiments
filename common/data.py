@@ -6,10 +6,18 @@ optional here.
 
 A tiny on-disk cache keeps repeated backtest runs fast and makes results reproducible
 offline: delete `data/cache/` to force a refresh.
+
+The cache key is date-stamped for open-ended requests. An `end=None` request means "every
+bar up to today", and what that resolves to changes every trading day -- so caching it
+under a fixed `latest` key silently re-serves yesterday's bars tomorrow, and a repo whose
+whole claim is "re-run it and check" quietly stops re-running anything. A request with an
+explicit `end` is immutable and keeps a permanent key.
 """
 
 from __future__ import annotations
 
+import datetime as dt
+import glob
 import os
 
 import pandas as pd
@@ -21,10 +29,39 @@ START = "2011-01-01"   # SOXL listed 2010-03; start once it has ~1y of history
 END = None             # None = today
 
 
+def _cache_path(symbol: str, start: str, end: str | None, kind: str) -> str:
+    """Cache filename for one request. Open-ended requests get today's date in the key.
+
+    `kind` separates the close-only and Open/Close caches so a caller asking for OHLC can
+    never be served a file written by a caller that only wanted closes.
+    """
+    suffix = f"_{kind}" if kind else ""
+    stamp = end if end else f"latest-{dt.date.today().isoformat()}"
+    return os.path.join(CACHE_DIR, f"{symbol}{suffix}_{start}_{stamp}.csv")
+
+
+def _prune_stale(symbol: str, start: str, kind: str, keep: str) -> None:
+    """Delete superseded caches for this symbol so the directory does not grow without bound.
+
+    Covers both today's `latest-<date>` files and the undated `latest` files written by the
+    earlier cache scheme, which nothing reads any more and which would otherwise sit in
+    every existing checkout forever.
+    """
+    suffix = f"_{kind}" if kind else ""
+    stale = (glob.glob(os.path.join(CACHE_DIR, f"{symbol}{suffix}_{start}_latest-*.csv"))
+             + glob.glob(os.path.join(CACHE_DIR, f"{symbol}{suffix}_{start}_latest.csv")))
+    for path in stale:
+        if os.path.abspath(path) != os.path.abspath(keep):
+            try:
+                os.remove(path)
+            except OSError:      # a concurrent run already removed it; nothing to do
+                pass
+
+
 def fetch_close(symbol: str, start: str = START, end: str | None = END,
                 use_cache: bool = True) -> pd.Series:
     """Split/dividend-adjusted daily closes for `symbol`, oldest -> newest."""
-    cache_path = os.path.join(CACHE_DIR, f"{symbol}_{start}_{end or 'latest'}.csv")
+    cache_path = _cache_path(symbol, start, end, kind="")
     if use_cache and os.path.exists(cache_path):
         s = pd.read_csv(cache_path, index_col=0, parse_dates=True).iloc[:, 0]
         return s.astype(float).rename(symbol)
@@ -45,6 +82,7 @@ def fetch_close(symbol: str, start: str = START, end: str | None = END,
     if use_cache:
         os.makedirs(CACHE_DIR, exist_ok=True)
         close.to_csv(cache_path)
+        _prune_stale(symbol, start, "", keep=cache_path)
     return close
 
 
@@ -69,7 +107,7 @@ def fetch_ohlc(symbol: str, start: str = START, end: str | None = END,
     needs, and a narrow cache format avoids silently serving stale High/Low/Volume to a
     future caller that asked for something else.
     """
-    cache_path = os.path.join(CACHE_DIR, f"{symbol}_ohlc_{start}_{end or 'latest'}.csv")
+    cache_path = _cache_path(symbol, start, end, kind="ohlc")
     if use_cache and os.path.exists(cache_path):
         df = pd.read_csv(cache_path, index_col=0, parse_dates=True)
         return df.astype(float)
@@ -91,6 +129,7 @@ def fetch_ohlc(symbol: str, start: str = START, end: str | None = END,
     if use_cache:
         os.makedirs(CACHE_DIR, exist_ok=True)
         out.to_csv(cache_path)
+        _prune_stale(symbol, start, "ohlc", keep=cache_path)
     return out
 
 
