@@ -1,0 +1,28 @@
+{
+ "asof": "2026-11-06",
+ "entry": "2026-11-09",
+ "hold_window_end": "2026-11-24",
+ "weights": {
+  "trend": 0.35,
+  "mom_12_1": 0.35,
+  "earn_react": 0.3
+ },
+ "filters": {
+  "min_price": 5.0,
+  "max_price": 400.0,
+  "min_adv": 1000000,
+  "max_vol60": 0.5,
+  "min_history_days": 252
+ },
+ "universe": 1000,
+ "eligible": 486,
+ "exclusions": {
+  "avg volume < 1M": 162,
+  "60d vol > 50%": 160,
+  "price outside $5-$400": 92,
+  "earnings inside hold window": 65,
+  "under 1y of history": 20,
+  "next earnings date unknown": 15
+ },
+ "note": "trend and mom_12_1 selected after the 10-day backtest; see report"
+}

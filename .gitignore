@@ -10,3 +10,8 @@ data/cache/
 
 .env
 .DS_Store
+
+# Raw vendor news pulls (titles/summaries are third-party content). The per-stock Stage-2
+# notes that cite them are kept; the feed itself is re-downloadable and not redistributed.
+run_*/stage2_adversarial/news/
+run_*/stage2_adversarial/news_digest.md
