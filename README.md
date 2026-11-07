@@ -18,6 +18,12 @@
 >   of it appears anywhere in this repo, and none of it should. See §1.3.
 > - What follows describes **what this branch will contain** once the pipeline is re-run and its
 >   outputs are sanitised.
+>
+> **Update, 2026-11-07:** a *short-horizon* variant (a 1–2 week hold rather than 12 months)
+> has been built and run. The code is in [`pipeline/`](pipeline/) and the outputs in
+> [`run_2026-11-07_short/`](run_2026-11-07_short/). Start with its
+> [final report](run_2026-11-07_short/reports/FINAL_REPORT.md), whose §2 shows the screen had
+> no validated 10-day edge in backtest. No personal holdings or account values are included.
 
 ---
 

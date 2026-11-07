@@ -89,16 +89,21 @@ def main(run_dir: str, capital: float | None) -> None:
         print("\nSPY:", {k: round(v, 4) for k, v in spy.items()})
     if capital:
         print(f"\nWhole-share orders for {capital:,.0f} (not saved):")
-        left = capital
-        rows = []
-        for s, r in picks.iterrows():
-            n = int(np.floor(capital * r.weight / r.price))
-            rows.append([s, n, r.price, n * r.price])
-            left -= n * r.price
-        # spend the remainder on whichever pick it buys a share of, cheapest first
-        for row in sorted(rows, key=lambda x: x[2]):
-            while left >= row[2]:
-                row[1] += 1; row[3] += row[2]; left -= row[2]
+        # Floor to whole shares, then repeatedly buy one more share of the pick furthest
+        # below its target weight, provided that share fits the cash and keeps the pick
+        # within W_MAX. Rounding must not break the constraint the optimiser enforced.
+        tgt = picks.weight * capital
+        n = {s: int(np.floor(tgt[s] / picks.price[s])) for s in picks.index}
+        left = capital - sum(n[s] * picks.price[s] for s in picks.index)
+        while True:
+            ok = [s for s in picks.index if picks.price[s] <= left
+                  and (n[s] + 1) * picks.price[s] <= W_MAX * capital]
+            if not ok:
+                break
+            s = max(ok, key=lambda x: tgt[x] - n[x] * picks.price[x])
+            n[s] += 1
+            left -= picks.price[s]
+        rows = [[s, n[s], picks.price[s], n[s] * picks.price[s]] for s in picks.index]
         for s, n, p, v in rows:
             print(f"  {s}: {n} sh @ ~{p:.2f} = {v:,.2f} ({v / capital:.0%})")
         print(f"  cash left: {left:,.2f}")

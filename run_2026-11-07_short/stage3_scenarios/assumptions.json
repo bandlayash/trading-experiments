@@ -1,0 +1,6 @@
+{
+ "rf": 0.04,
+ "erp": 0.05,
+ "horizon_sessions": 10,
+ "red_team_shrink": 0.25
+}

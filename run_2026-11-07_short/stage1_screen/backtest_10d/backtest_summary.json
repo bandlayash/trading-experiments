@@ -1,0 +1,22 @@
+{
+ "base": {
+  "windows": 50,
+  "first": "2024-11-07",
+  "last": "2026-10-23",
+  "universe_stock_hit": 0.52422,
+  "universe_mean": 0.007764876817967333,
+  "universe_median": 0.005069747839783201,
+  "universe_p10": -0.07976129309946739,
+  "universe_p90": 0.09616169237295653,
+  "spy_hit": 0.58,
+  "spy_mean": 0.005172568273416389
+ },
+ "q5_minus_q1_tstat": {
+  "composite": -0.7,
+  "hi52": -1.16,
+  "mom_12_1": 0.19,
+  "rev_5d": 0.59,
+  "trend": -0.02,
+  "vol_60": -1.51
+ }
+}
